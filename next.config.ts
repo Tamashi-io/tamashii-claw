@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: resolve(__dirname),
   },
-  serverExternalPackages: ["@hypercli/sdk", "ws"],
+  serverExternalPackages: ["ws"],
 };
 
 export default nextConfig;

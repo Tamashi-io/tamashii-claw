@@ -1,4 +1,4 @@
-import { HyperCLI } from "@hypercli/sdk";
+import { HyperCLI } from "./hypercli-sdk/index.js";
 
 /**
  * Server-side singleton HyperCLI client.
