@@ -1,0 +1,130 @@
+"use client";
+
+import { useRef, useState, useEffect } from "react";
+import { motion, useInView } from "framer-motion";
+import { Check } from "lucide-react";
+import { useTamashiiAuth } from "@/hooks/useTamashiiAuth";
+import { API_BASE } from "@/lib/api";
+import { Plan, formatTokens, formatCpu, formatMemory } from "@/lib/format";
+
+export function PricingSection() {
+  const sectionRef = useRef<HTMLElement>(null);
+  const isInView = useInView(sectionRef, { once: true, margin: "-100px" });
+  const { login, isAuthenticated } = useTamashiiAuth();
+  const [plans, setPlans] = useState<Plan[]>([]);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/plans`)
+      .then((r) => r.json())
+      .then((data) => setPlans(data.plans ?? []))
+      .catch(() => {});
+  }, []);
+
+  const handleSelect = () => {
+    if (isAuthenticated) {
+      window.location.href = "/dashboard/plans";
+    } else {
+      login();
+    }
+  };
+
+  return (
+    <section
+      ref={sectionRef}
+      id="pricing"
+      className="relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8 overflow-hidden"
+    >
+      <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-grid-pattern" />
+
+      <div className="max-w-7xl mx-auto relative">
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 40 }}
+          transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+          className="text-center mb-16"
+        >
+          <h2 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4">
+            Simple, Predictable{" "}
+            <span className="gradient-text-primary">Pricing</span>
+          </h2>
+          <p className="text-lg text-text-secondary max-w-2xl mx-auto">
+            Pay per AIU, not per token. Scale your agents without surprise
+            bills.
+          </p>
+        </motion.div>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {plans.map((plan, index) => (
+            <motion.div
+              key={plan.id}
+              initial={{ opacity: 0, y: 30 }}
+              animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
+              transition={{
+                duration: 0.6,
+                delay: 0.2 + index * 0.1,
+                ease: [0.22, 1, 0.36, 1],
+              }}
+              className={`glass-card p-6 flex flex-col ${
+                plan.highlighted
+                  ? "border-lime/40 shadow-[0_0_40px_rgba(57,255,20,0.12)]"
+                  : ""
+              }`}
+            >
+              {plan.highlighted && (
+                <div className="text-xs font-semibold text-primary bg-lime/10 px-3 py-1 rounded-full self-start mb-4">
+                  Most Popular
+                </div>
+              )}
+
+              <h3 className="text-lg font-semibold text-foreground">
+                {plan.name}
+              </h3>
+              <div className="mt-2 mb-1">
+                <span className="text-3xl font-bold text-foreground">
+                  ${plan.price}
+                </span>
+                <span className="text-text-muted text-sm">/month</span>
+              </div>
+              <p className="text-sm text-text-tertiary mb-1">
+                {plan.aiu} AIU &middot;{" "}
+                {formatTokens(plan.limits.tpd)} tokens/day
+              </p>
+              <p className="text-xs text-text-muted mb-6">
+                Up to {formatTokens(plan.limits.burst_tpm)} TPM burst &middot;{" "}
+                {formatTokens(plan.limits.rpm)} RPM
+              </p>
+              {plan.agent_resources && plan.agent_resources.max_agents > 0 && (
+                <p className="text-xs text-text-muted mb-6">
+                  {plan.agent_resources.max_agents} agent{plan.agent_resources.max_agents > 1 ? "s" : ""} &middot;{" "}
+                  {formatCpu(Number(plan.agent_resources.total_cpu))} &middot;{" "}
+                  {formatMemory(Number(plan.agent_resources.total_memory))}
+                </p>
+              )}
+
+              <ul className="space-y-3 mb-8 flex-1">
+                {plan.features.map((feature) => (
+                  <li
+                    key={feature}
+                    className="flex items-start gap-2 text-sm text-text-secondary"
+                  >
+                    <Check className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+                    <span>{feature}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <button
+                onClick={handleSelect}
+                className={`w-full py-2.5 rounded-lg text-sm font-medium transition-all ${
+                  plan.highlighted ? "btn-primary" : "btn-secondary"
+                }`}
+              >
+                Get Started
+              </button>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
