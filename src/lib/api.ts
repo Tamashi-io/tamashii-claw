@@ -2,21 +2,13 @@ function trimTrailingSlash(value: string): string {
   return value.endsWith("/") ? value.slice(0, -1) : value;
 }
 
-function stripApiSuffix(value: string): string {
-  const trimmed = trimTrailingSlash(value);
-  return trimmed.endsWith("/api") ? trimmed.slice(0, -4) : trimmed;
-}
+const rawApiBase = process.env.NEXT_PUBLIC_TAMASHIICLAW_API_URL || "/api";
 
-const rawApiBase = process.env.NEXT_PUBLIC_TAMASHIICLAW_API_URL || "";
-const rawModelsUrl = process.env.NEXT_PUBLIC_TAMASHIICLAW_MODELS_URL || "";
-
+/** Base path for all API calls — points to our Next.js route handlers */
 export const API_BASE = trimTrailingSlash(rawApiBase);
 
-export const MODELS_ENDPOINT = rawModelsUrl
-  ? trimTrailingSlash(rawModelsUrl)
-  : rawApiBase
-    ? `${stripApiSuffix(rawApiBase)}/models`
-    : "/models";
+/** Models endpoint — proxied through /api/models → HyperCLI SDK */
+export const MODELS_ENDPOINT = `${API_BASE}/models`;
 
 const TOKEN_KEY = "tamashiiclaw_auth_token";
 
