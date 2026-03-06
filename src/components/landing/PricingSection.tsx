@@ -3,14 +3,12 @@
 import { useRef, useState, useEffect } from "react";
 import { motion, useInView } from "framer-motion";
 import { Check } from "lucide-react";
-import { useTamashiiAuth } from "@/hooks/useTamashiiAuth";
 import { API_BASE } from "@/lib/api";
 import { Plan, formatTokens, formatCpu, formatMemory } from "@/lib/format";
 
 export function PricingSection() {
   const sectionRef = useRef<HTMLElement>(null);
   const isInView = useInView(sectionRef, { once: true, margin: "-100px" });
-  const { login, isAuthenticated } = useTamashiiAuth();
   const [plans, setPlans] = useState<Plan[]>([]);
 
   useEffect(() => {
@@ -19,14 +17,6 @@ export function PricingSection() {
       .then((data) => setPlans(data.plans ?? []))
       .catch(() => {});
   }, []);
-
-  const handleSelect = () => {
-    if (isAuthenticated) {
-      window.location.href = "/dashboard/plans";
-    } else {
-      login();
-    }
-  };
 
   return (
     <section
@@ -113,14 +103,14 @@ export function PricingSection() {
                 ))}
               </ul>
 
-              <button
-                onClick={handleSelect}
-                className={`w-full py-2.5 rounded-lg text-sm font-medium transition-all ${
+              <a
+                href="/dashboard/plans"
+                className={`w-full py-2.5 rounded-lg text-sm font-medium transition-all block text-center ${
                   plan.highlighted ? "btn-primary" : "btn-secondary"
                 }`}
               >
                 Get Started
-              </button>
+              </a>
             </motion.div>
           ))}
         </div>

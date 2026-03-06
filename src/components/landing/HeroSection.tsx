@@ -2,7 +2,6 @@
 
 import { useRef } from "react";
 import { motion, useScroll, useTransform, useSpring } from "framer-motion";
-import { useTamashiiAuth } from "@/hooks/useTamashiiAuth";
 
 const codeSnippet = `curl https://api.tamashiiclaw.app/v1/chat/completions \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
@@ -14,7 +13,6 @@ const codeSnippet = `curl https://api.tamashiiclaw.app/v1/chat/completions \\
 
 export function HeroSection() {
   const sectionRef = useRef<HTMLElement>(null);
-  const { login, isAuthenticated } = useTamashiiAuth();
 
   const { scrollYProgress } = useScroll({
     target: sectionRef,
@@ -29,14 +27,6 @@ export function HeroSection() {
 
   const contentY = useTransform(smoothProgress, [0, 1], [0, -80]);
   const contentOpacity = useTransform(smoothProgress, [0, 0.5], [1, 0]);
-
-  const handleGetStarted = () => {
-    if (isAuthenticated) {
-      window.location.href = "/dashboard";
-    } else {
-      login();
-    }
-  };
 
   return (
     <section
@@ -100,12 +90,12 @@ export function HeroSection() {
           transition={{ duration: 0.8, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
           className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16"
         >
-          <button
-            onClick={handleGetStarted}
+          <a
+            href="/dashboard"
             className="btn-primary px-8 py-3 rounded-lg text-base font-semibold glow-green-subtle"
           >
             Get Started
-          </button>
+          </a>
           <a
             href="#pricing"
             className="btn-secondary px-8 py-3 rounded-lg text-base font-medium"

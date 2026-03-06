@@ -9,7 +9,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@privy-io/react-auth": "^3.16.0",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/ws": "^8.18.1",
     "framer-motion": "^12.34.5",

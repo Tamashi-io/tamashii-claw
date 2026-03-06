@@ -1,8 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Bot, Key, CreditCard, Settings, LogOut } from "lucide-react";
-import { useTamashiiAuth } from "@/hooks/useTamashiiAuth";
+import { LayoutDashboard, Bot, Key, CreditCard, Settings } from "lucide-react";
 
 const navItems = [
   { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
@@ -15,8 +14,6 @@ const navItems = [
 export function DashboardNav() {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout } = useTamashiiAuth();
-  const emailInitial = user?.email ? user.email[0].toUpperCase() : "?";
 
   return (
     <>
@@ -50,18 +47,6 @@ export function DashboardNav() {
                   );
                 })}
               </nav>
-            </div>
-
-            <div className="hidden md:flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-surface-high flex items-center justify-center text-sm font-bold text-foreground">
-                {emailInitial}
-              </div>
-              <button
-                onClick={() => logout()}
-                className="text-text-muted hover:text-foreground transition-colors"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
             </div>
           </div>
         </div>

@@ -3,18 +3,8 @@
 import {
   createContext,
   useContext,
-  useState,
-  useCallback,
-  useEffect,
   type ReactNode,
 } from "react";
-import { usePrivy } from "@privy-io/react-auth";
-import {
-  clearStoredToken,
-  getStoredToken,
-  isTokenExpired,
-  getAppToken,
-} from "@/lib/api";
 
 export interface TamashiiUser {
   id: string;
@@ -43,87 +33,20 @@ export function useTamashiiAuth(): TamashiiAuthContextType {
   return context;
 }
 
+/**
+ * Single-account mode — no user login required.
+ * The server-side API key handles all auth with HyperClaw.
+ */
 export function TamashiiAuthProvider({ children }: { children: ReactNode }) {
-  const {
-    ready,
-    authenticated,
-    login: privyLogin,
-    logout: privyLogout,
-    user: privyUser,
-    getAccessToken,
-  } = usePrivy();
-
-  const [isLoading, setIsLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState<TamashiiUser | null>(null);
-
-  // Check for existing valid token on mount
-  useEffect(() => {
-    if (!ready) return;
-
-    const token = getStoredToken();
-    if (token && !isTokenExpired(token)) {
-      setIsAuthenticated(true);
-      if (privyUser) {
-        setUser({
-          id: privyUser.id,
-          email: privyUser.email?.address,
-          walletAddress: privyUser.wallet?.address,
-        });
-      }
-    }
-    setIsLoading(false);
-  }, [ready, privyUser]);
-
-  // Exchange Privy token for app token when Privy authenticates
-  useEffect(() => {
-    if (!ready || !authenticated || isAuthenticated) return;
-
-    const exchange = async () => {
-      try {
-        setIsLoading(true);
-        await getAppToken(getAccessToken);
-        setIsAuthenticated(true);
-        if (privyUser) {
-          setUser({
-            id: privyUser.id,
-            email: privyUser.email?.address,
-            walletAddress: privyUser.wallet?.address,
-          });
-        }
-      } catch (err) {
-        console.error("Token exchange failed:", err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    exchange();
-  }, [ready, authenticated, isAuthenticated, getAccessToken, privyUser]);
-
-  const login = useCallback(() => {
-    privyLogin();
-  }, [privyLogin]);
-
-  const logout = useCallback(async () => {
-    clearStoredToken();
-    setIsAuthenticated(false);
-    setUser(null);
-    await privyLogout();
-  }, [privyLogout]);
-
-  const getToken = useCallback(async (): Promise<string> => {
-    return getAppToken(getAccessToken);
-  }, [getAccessToken]);
-
   return (
     <TamashiiAuthContext.Provider
       value={{
-        isLoading,
-        isAuthenticated,
-        user,
-        login,
-        logout,
-        getToken,
+        isLoading: false,
+        isAuthenticated: true,
+        user: { id: "tamashii", email: "admin@tamashii.io" },
+        login: () => { window.location.href = "/dashboard"; },
+        logout: async () => { window.location.href = "/"; },
+        getToken: async () => "",
       }}
     >
       {children}
