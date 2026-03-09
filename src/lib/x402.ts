@@ -39,6 +39,44 @@ function getProvider(): EthereumProvider {
   return win.ethereum;
 }
 
+/** Ensure the wallet is on Base (chainId 0x2105). Prompts switch/add if not. */
+async function ensureBaseNetwork(provider: EthereumProvider): Promise<void> {
+  const chainId = (await provider.request({
+    method: "eth_chainId",
+  })) as string;
+
+  if (chainId === "0x2105") return;
+
+  try {
+    await provider.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: "0x2105" }],
+    });
+  } catch (err: unknown) {
+    const switchError = err as { code?: number };
+    if (switchError.code === 4902) {
+      await provider.request({
+        method: "wallet_addEthereumChain",
+        params: [
+          {
+            chainId: "0x2105",
+            chainName: "Base",
+            nativeCurrency: {
+              name: "Ethereum",
+              symbol: "ETH",
+              decimals: 18,
+            },
+            rpcUrls: ["https://mainnet.base.org"],
+            blockExplorerUrls: ["https://basescan.org"],
+          },
+        ],
+      });
+    } else {
+      throw err;
+    }
+  }
+}
+
 export async function connectWallet(): Promise<WalletState> {
   if (walletState) return walletState;
 
@@ -50,40 +88,7 @@ export async function connectWallet(): Promise<WalletState> {
 
   if (!accounts?.length) throw new Error("No accounts found");
 
-  // Switch to Base if needed
-  const chainId = (await provider.request({
-    method: "eth_chainId",
-  })) as string;
-  if (chainId !== "0x2105") {
-    try {
-      await provider.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId: "0x2105" }],
-      });
-    } catch (err: unknown) {
-      const switchError = err as { code?: number };
-      if (switchError.code === 4902) {
-        await provider.request({
-          method: "wallet_addEthereumChain",
-          params: [
-            {
-              chainId: "0x2105",
-              chainName: "Base",
-              nativeCurrency: {
-                name: "Ethereum",
-                symbol: "ETH",
-                decimals: 18,
-              },
-              rpcUrls: ["https://mainnet.base.org"],
-              blockExplorerUrls: ["https://basescan.org"],
-            },
-          ],
-        });
-      } else {
-        throw err;
-      }
-    }
-  }
+  await ensureBaseNetwork(provider);
 
   const client = createWalletClient({
     account: accounts[0] as `0x${string}`,
@@ -158,6 +163,9 @@ export async function x402Subscribe(
   token?: string
 ): Promise<{ ok: boolean; plan_id: string; expires_at: string }> {
   const wallet = await connectWallet();
+
+  // Always verify the wallet is on Base before attempting payment
+  await ensureBaseNetwork(getProvider());
 
   if (!paymentApi) {
     paymentApi = buildPaymentApi(wallet.client);
