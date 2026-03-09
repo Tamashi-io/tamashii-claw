@@ -5,12 +5,14 @@ import { Check } from "lucide-react";
 import { useTamashiiAuth } from "@/hooks/useTamashiiAuth";
 import { apiFetch, API_BASE } from "@/lib/api";
 import { Plan, formatTokens, formatCpu, formatMemory } from "@/lib/format";
+import { PlanCheckoutModal } from "@/components/dashboard/PlanCheckoutModal";
 
 export default function PlansPage() {
   const { getToken } = useTamashiiAuth();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [currentPlanId, setCurrentPlanId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [checkoutPlan, setCheckoutPlan] = useState<Plan | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -21,8 +23,8 @@ export default function PlansPage() {
         ]);
         setPlans(plansRes.plans ?? []);
 
-        const profile = await apiFetch<{ plan_id?: string }>("/user/profile", token);
-        setCurrentPlanId(profile.plan_id ?? null);
+        const currentPlan = await apiFetch<{ id?: string; plan_id?: string }>("/plans/current", token).catch(() => null);
+        setCurrentPlanId(currentPlan?.id ?? currentPlan?.plan_id ?? null);
       } catch {
         // Plans not available
       } finally {
@@ -98,6 +100,7 @@ export default function PlansPage() {
 
               <button
                 disabled={isCurrent}
+                onClick={() => !isCurrent && setCheckoutPlan(plan)}
                 className={`w-full py-2.5 rounded-lg text-sm font-medium transition-all ${
                   isCurrent
                     ? "bg-surface-low text-text-muted cursor-default"
@@ -112,6 +115,15 @@ export default function PlansPage() {
           );
         })}
       </div>
+
+      {checkoutPlan && (
+        <PlanCheckoutModal
+          plan={checkoutPlan}
+          isOpen={true}
+          onClose={() => setCheckoutPlan(null)}
+          getToken={getToken}
+        />
+      )}
     </div>
   );
 }
