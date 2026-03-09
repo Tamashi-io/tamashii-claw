@@ -11,8 +11,8 @@ import { base } from "viem/chains";
 import { wrapAxiosWithPayment, x402Client } from "@x402/axios";
 import { ExactEvmScheme, toClientEvmSigner } from "@x402/evm";
 
-/** HyperClaw API base — x402 payments go directly, not through our proxy */
-const CLAW_API_BASE = "https://api.hyperclaw.app/api";
+/** x402 payments go through our Next.js proxy to avoid CORS issues */
+const X402_PROXY_BASE = "/api";
 
 // ---------------------------------------------------------------------------
 // Wallet
@@ -140,7 +140,7 @@ function buildPaymentApi(wallet: WalletClient): AxiosInstance {
   client.register("eip155:*", new ExactEvmScheme(signer));
 
   const instance = axios.create({
-    baseURL: CLAW_API_BASE,
+    baseURL: X402_PROXY_BASE,
     headers: { "Content-Type": "application/json" },
   });
 

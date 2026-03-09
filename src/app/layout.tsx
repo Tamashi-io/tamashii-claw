@@ -29,7 +29,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="scroll-smooth">
       <head>
-        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+        <link rel="icon" href="/favicon.ico" sizes="any" />
       </head>
       <body className={`${syne.variable} ${spaceMono.variable} font-sans antialiased overflow-x-hidden`}>
         <TamashiiProviders>
