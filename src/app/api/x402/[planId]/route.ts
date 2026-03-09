@@ -29,6 +29,9 @@ export async function POST(
   if (paymentSig) forwardHeaders["PAYMENT-SIGNATURE"] = paymentSig;
   if (xPayment) forwardHeaders["X-PAYMENT"] = xPayment;
 
+  const isRetry = !!(paymentSig || xPayment);
+  console.log(`[x402 proxy] POST /api/x402/${planId} | retry=${isRetry} | has PAYMENT-SIGNATURE=${!!paymentSig} | has X-PAYMENT=${!!xPayment}`);
+
   let body: string | undefined;
   try {
     const text = await request.text();
@@ -56,6 +59,12 @@ export async function POST(
     if (val) responseHeaders.set(h, val);
   }
 
+  const hasPaymentRequired = !!upstream.headers.get("payment-required");
+  console.log(`[x402 proxy] upstream ${upstream.status} | has PAYMENT-REQUIRED header=${hasPaymentRequired}`);
+
+  // Log all upstream headers for debugging
+  console.log(`[x402 proxy] upstream headers:`, Object.fromEntries(upstream.headers.entries()));
+
   // Expose x402 headers to the browser
   responseHeaders.set(
     "Access-Control-Expose-Headers",
@@ -63,6 +72,7 @@ export async function POST(
   );
 
   const responseBody = await upstream.text();
+  console.log(`[x402 proxy] upstream body (first 200 chars):`, responseBody.slice(0, 200));
 
   return new Response(responseBody, {
     status: upstream.status,
