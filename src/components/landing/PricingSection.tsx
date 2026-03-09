@@ -4,7 +4,7 @@ import { useRef, useState, useEffect } from "react";
 import { motion, useInView } from "framer-motion";
 import { Check } from "lucide-react";
 import { API_BASE } from "@/lib/api";
-import { Plan, formatTokens, formatCpu, formatMemory } from "@/lib/format";
+import { Plan, formatTokens } from "@/lib/format";
 
 export function PricingSection() {
   const sectionRef = useRef<HTMLElement>(null);
@@ -83,11 +83,9 @@ export function PricingSection() {
                 Up to {formatTokens(plan.limits.burst_tpm)} TPM burst &middot;{" "}
                 {formatTokens(plan.limits.rpm)} RPM
               </p>
-              {plan.agent_resources && plan.agent_resources.max_agents > 0 && (
+              {(plan.agents ?? 0) > 0 && (
                 <p className="text-xs text-text-muted mb-6">
-                  {plan.agent_resources.max_agents} agent{plan.agent_resources.max_agents > 1 ? "s" : ""} &middot;{" "}
-                  {formatCpu(Number(plan.agent_resources.total_cpu))} &middot;{" "}
-                  {formatMemory(Number(plan.agent_resources.total_memory))}
+                  {plan.agents} agent{(plan.agents ?? 0) > 1 ? "s" : ""} included
                 </p>
               )}
 

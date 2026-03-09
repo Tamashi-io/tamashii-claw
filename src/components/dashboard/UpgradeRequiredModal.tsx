@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Zap, Check } from "lucide-react";
-import { API_BASE, apiFetch } from "@/lib/api";
-import { Plan, formatTokens, formatCpu, formatMemory } from "@/lib/format";
+import { X, Zap } from "lucide-react";
+import { API_BASE } from "@/lib/api";
+import { Plan, formatTokens } from "@/lib/format";
 import { PlanCheckoutModal } from "./PlanCheckoutModal";
 
 interface UpgradeRequiredModalProps {
@@ -36,12 +36,10 @@ export function UpgradeRequiredModal({
       .finally(() => setLoading(false));
   }, [isOpen]);
 
-  // Only show plans that support agents and are upgrades from current
+  // Only show plans that support agents and are upgrades from current.
+  // The API returns `agents` (flat number) — not `agent_resources`.
   const upgradePlans = plans.filter(
-    (p) =>
-      p.agent_resources &&
-      p.agent_resources.max_agents > 0 &&
-      p.id !== currentPlanId
+    (p) => (p.agents ?? 0) > 0 && p.id !== currentPlanId
   );
 
   if (checkoutPlan) {
@@ -134,10 +132,8 @@ export function UpgradeRequiredModal({
                           </div>
                           <p className="text-xs text-text-muted mt-0.5">
                             {formatTokens(plan.limits.tpd)} tokens/day &middot;{" "}
-                            {plan.agent_resources!.max_agents} agent
-                            {plan.agent_resources!.max_agents > 1 ? "s" : ""} &middot;{" "}
-                            {formatCpu(Number(plan.agent_resources!.total_cpu))} &middot;{" "}
-                            {formatMemory(Number(plan.agent_resources!.total_memory))}
+                            {plan.agents} agent{(plan.agents ?? 0) > 1 ? "s" : ""} &middot;{" "}
+                            {plan.aiu} AIU
                           </p>
                         </div>
                         <div className="text-right">
