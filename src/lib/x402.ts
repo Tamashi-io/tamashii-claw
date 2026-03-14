@@ -11,8 +11,9 @@ import { base } from "viem/chains";
 import { wrapAxiosWithPayment, x402Client } from "@x402/axios";
 import { ExactEvmScheme, toClientEvmSigner } from "@x402/evm";
 
-/** x402 payments go through our Next.js proxy to avoid CORS issues */
-const X402_PROXY_BASE = "/api";
+/** x402 payments go through our NestJS backend */
+const X402_PROXY_BASE =
+  process.env.NEXT_PUBLIC_TAMASHIICLAW_API_URL || "/api";
 
 // ---------------------------------------------------------------------------
 // Wallet
