@@ -97,7 +97,7 @@ export function HeroSection() {
             Launch App
           </a>
           <a
-            href="#features"
+            href="#network"
             className="btn-secondary px-8 py-3 rounded-lg text-base font-medium"
           >
             How It Works

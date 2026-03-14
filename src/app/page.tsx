@@ -1,10 +1,10 @@
 import { TamashiiHeader } from "@/components/landing/TamashiiHeader";
 import { HeroSection } from "@/components/landing/HeroSection";
-import { FeaturesSection } from "@/components/landing/FeaturesSection";
+import { NetworkContributionSection } from "@/components/landing/NetworkContributionSection";
 import { ValuePropSection } from "@/components/landing/ValuePropSection";
 import { ModelsSection } from "@/components/landing/ModelsSection";
 import { PricingSection } from "@/components/landing/PricingSection";
-import { TechSpecsSection } from "@/components/landing/TechSpecsSection";
+import { TrainingLoopSection } from "@/components/landing/TrainingLoopSection";
 import { TamashiiFooter } from "@/components/landing/TamashiiFooter";
 
 export default function Home() {
@@ -13,11 +13,11 @@ export default function Home() {
       <TamashiiHeader />
       <main>
         <HeroSection />
-        <FeaturesSection />
+        <NetworkContributionSection />
         <ValuePropSection />
         <ModelsSection />
         <PricingSection />
-        <TechSpecsSection />
+        <TrainingLoopSection />
       </main>
       <TamashiiFooter />
     </div>
