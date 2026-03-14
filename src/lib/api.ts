@@ -39,6 +39,8 @@ export function isTokenExpired(token: string): boolean {
 }
 
 export async function exchangeToken(privyToken: string): Promise<string> {
+  console.log("[auth] Exchanging Privy token for app token...");
+
   const response = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -47,6 +49,7 @@ export async function exchangeToken(privyToken: string): Promise<string> {
 
   if (!response.ok) {
     const errorText = await response.text();
+    console.error("[auth] Token exchange failed:", response.status, errorText);
     throw new Error(`Token exchange failed: ${response.status} - ${errorText}`);
   }
 
