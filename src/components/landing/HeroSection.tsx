@@ -80,8 +80,8 @@ export function HeroSection() {
           transition={{ duration: 0.8, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
           className="text-base sm:text-lg md:text-xl text-text-secondary max-w-2xl mx-auto mb-10 leading-relaxed px-2"
         >
-          Deploy autonomous AI agents that run 24/7 on decentralized GPU
-          infrastructure. Flat-rate compute, no per-token charges, OpenAI-compatible.
+          Break free from per-token pricing. Deploy autonomous AI agents on
+          decentralized B200 GPUs. Flat-rate compute, OpenAI-compatible, pay on-chain.
         </motion.p>
 
         <motion.div
