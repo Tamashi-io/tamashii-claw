@@ -138,8 +138,8 @@ export function ModelsSection() {
             Frontier <span className="gradient-text-primary">Models</span>
           </h2>
           <p className="text-lg text-text-secondary max-w-2xl mx-auto">
-            All models included in every plan. Choose the right one for your
-            workload.
+            Every model included in every plan. Choose the right one for your
+            agent&apos;s workload.
           </p>
         </motion.div>
 
@@ -216,7 +216,7 @@ export function ModelsSection() {
           transition={{ duration: 0.6, delay: 0.6 }}
           className="text-center text-sm text-text-muted mt-8"
         >
-          All model usage is included in your active plan.
+          All models available on the Tamashii Network. Included in every plan.
         </motion.p>
       </div>
     </section>

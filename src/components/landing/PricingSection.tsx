@@ -34,12 +34,12 @@ export function PricingSection() {
           className="text-center mb-16"
         >
           <h2 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4">
-            Simple, Predictable{" "}
+            Predictable{" "}
             <span className="gradient-text-primary">Pricing</span>
           </h2>
           <p className="text-lg text-text-secondary max-w-2xl mx-auto">
-            Pay per AIU, not per token. Scale your agents without surprise
-            bills.
+            Flat-rate compute for your agents. No per-token surprises.
+            Scale without limits.
           </p>
         </motion.div>
 

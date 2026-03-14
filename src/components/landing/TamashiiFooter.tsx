@@ -7,7 +7,8 @@ const footerLinks = {
     { label: "Documentation", href: "#" },
     { label: "API Reference", href: "#" },
   ],
-  Company: [
+  Network: [
+    { label: "Tamashii Network", href: "https://tamashi.io" },
     { label: "TamashiiClaw", href: "/" },
     { label: "Contact", href: "mailto:support@tamashiiclaw.app" },
   ],
@@ -28,9 +29,9 @@ export function TamashiiFooter() {
               <span className="text-primary">Claw</span>
             </span>
             <p className="text-sm text-text-muted mt-2 leading-relaxed">
-              Unlimited agent inference.
+              Decentralized agent infrastructure.
               <br />
-              Flat-rate. OpenAI-compatible.
+              Powered by the Tamashii Network.
             </p>
           </div>
 
@@ -57,7 +58,7 @@ export function TamashiiFooter() {
 
         <div className="border-t border-border mt-8 pt-8 text-center">
           <p className="text-xs text-text-muted">
-            &copy; {new Date().getFullYear()} TamashiiClaw. All rights reserved.
+            &copy; {new Date().getFullYear()} Tamashii Network. All rights reserved.
           </p>
         </div>
       </div>

@@ -41,9 +41,9 @@ export function OnboardingGuide() {
             <Key className="w-4 h-4 text-primary" />
           </div>
           <div>
-            <p className="text-sm font-medium text-foreground">API Inference</p>
+            <p className="text-sm font-medium text-foreground">Connect to the Network</p>
             <p className="text-xs text-text-muted mt-0.5">
-              Create an API key and start making requests
+              Create an API key and start using decentralized inference
             </p>
           </div>
         </button>
@@ -56,9 +56,9 @@ export function OnboardingGuide() {
             <Bot className="w-4 h-4 text-primary" />
           </div>
           <div>
-            <p className="text-sm font-medium text-foreground">Agent Hosting</p>
+            <p className="text-sm font-medium text-foreground">Deploy an Agent</p>
             <p className="text-xs text-text-muted mt-0.5">
-              Deploy a persistent AI agent with built-in inference
+              Launch a persistent autonomous agent on the network
             </p>
           </div>
         </button>

@@ -10,7 +10,7 @@ const specs = [
     label: "Throughput",
     value: "~36M",
     unit: "tokens/hour per AIU",
-    description: "Sustained throughput with 4x burst on frontier models",
+    description: "Sustained throughput across the decentralized network with 4x burst capacity",
   },
   {
     icon: Gauge,
@@ -24,7 +24,7 @@ const specs = [
     label: "Compatibility",
     value: "OpenAI",
     unit: "SDK compatible",
-    description: "Works with any client that speaks the OpenAI Chat Completions API",
+    description: "Works with any OpenAI SDK client. Connect your agents in minutes.",
   },
 ];
 
@@ -60,11 +60,11 @@ export function TechSpecsSection() {
           className="text-center mb-16"
         >
           <h2 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4">
-            Technical{" "}
-            <span className="gradient-text-primary">Specifications</span>
+            Network{" "}
+            <span className="gradient-text-primary">Infrastructure</span>
           </h2>
           <p className="text-lg text-text-secondary max-w-2xl mx-auto">
-            Enterprise-grade infrastructure built for autonomous AI workloads.
+            Decentralized compute built for agents that run around the clock.
           </p>
         </motion.div>
 

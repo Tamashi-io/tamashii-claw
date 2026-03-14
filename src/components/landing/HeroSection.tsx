@@ -60,7 +60,7 @@ export function HeroSection() {
         >
           <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
           <span className="text-sm text-primary font-medium">
-            Flat-rate inference for AI agents
+            Powered by the Tamashii Network
           </span>
         </motion.div>
 
@@ -70,8 +70,8 @@ export function HeroSection() {
           transition={{ duration: 0.8, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
           className="text-[40px] sm:text-[48px] md:text-[56px] lg:text-[64px] font-bold leading-[0.95] tracking-[-0.03em] mb-6"
         >
-          Unlimited Agent{" "}
-          <span className="gradient-text-primary">Inference</span>
+          Decentralized Agent{" "}
+          <span className="gradient-text-primary">Infrastructure</span>
         </motion.h1>
 
         <motion.p
@@ -80,28 +80,48 @@ export function HeroSection() {
           transition={{ duration: 0.8, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
           className="text-base sm:text-lg md:text-xl text-text-secondary max-w-2xl mx-auto mb-10 leading-relaxed px-2"
         >
-          AIU (Agent Inference Units) enable 24/7 agent operation with no
-          per-token charges. OpenAI-compatible API on NVIDIA B200 GPUs.
+          Deploy autonomous AI agents that run 24/7 on decentralized GPU
+          infrastructure. Flat-rate compute, no per-token charges, OpenAI-compatible.
         </motion.p>
 
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
-          className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16"
+          className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8"
         >
           <a
             href="/dashboard"
             className="btn-primary px-8 py-3 rounded-lg text-base font-semibold glow-green-subtle"
           >
-            Get Started
+            Launch App
           </a>
           <a
-            href="#pricing"
+            href="#features"
             className="btn-secondary px-8 py-3 rounded-lg text-base font-medium"
           >
-            View Pricing
+            How It Works
           </a>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
+          className="flex items-center justify-center gap-8 sm:gap-12 mb-16"
+        >
+          {[
+            { value: "B200", label: "NVIDIA GPUs" },
+            { value: "24/7", label: "Agent Uptime" },
+            { value: "EVM", label: "Compatible" },
+          ].map((stat) => (
+            <div key={stat.label} className="text-center">
+              <span className="text-2xl sm:text-3xl font-bold text-foreground">
+                {stat.value}
+              </span>
+              <p className="text-xs text-text-muted mt-0.5">{stat.label}</p>
+            </div>
+          ))}
         </motion.div>
 
         <motion.div

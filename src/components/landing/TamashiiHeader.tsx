@@ -60,7 +60,7 @@ export function TamashiiHeader() {
               onClick={() => router.push("/dashboard")}
               className="btn-primary px-4 py-2 rounded-lg text-sm font-medium"
             >
-              Dashboard
+              Launch App
             </button>
           </div>
 
@@ -94,7 +94,7 @@ export function TamashiiHeader() {
                 onClick={() => { setMobileOpen(false); router.push("/dashboard"); }}
                 className="btn-primary px-4 py-2 rounded-lg text-sm font-medium w-full"
               >
-                Dashboard
+                Launch App
               </button>
             </div>
           </div>

@@ -2,32 +2,32 @@
 
 import { useRef } from "react";
 import { motion, useInView } from "framer-motion";
-import { Infinity, Code, Cpu, Wallet } from "lucide-react";
+import { Bot, Code, Cpu, Wallet } from "lucide-react";
 
 const features = [
   {
-    icon: Infinity,
-    title: "Unlimited Inference",
+    icon: Bot,
+    title: "Autonomous Agent Hosting",
     description:
-      "No per-token pricing. Use as much as your agents need with flat-rate AIU subscriptions. Predictable costs for autonomous workloads.",
+      "Deploy persistent AI agents on decentralized GPU infrastructure. Flat-rate compute with no per-token charges — built for workloads that run 24/7.",
   },
   {
     icon: Code,
     title: "OpenAI-Compatible API",
     description:
-      "Drop-in replacement for any OpenAI SDK client. Zero code changes needed — just swap your base URL and API key.",
+      "Drop-in replacement for any OpenAI SDK client. Zero code changes needed — just swap your base URL and start building.",
   },
   {
     icon: Cpu,
     title: "Frontier Models on B200 GPUs",
     description:
-      "Kimi K2.5, GLM-5, and MiniMax M2.5 — reasoning, vision, and tool use. ~36M tokens/hour per AIU with 4x burst.",
+      "Kimi K2.5, GLM-5, and MiniMax M2.5 — reasoning, vision, and tool use. Powered by the Tamashii Network's decentralized compute.",
   },
   {
     icon: Wallet,
-    title: "Crypto-Native Payments",
+    title: "On-Chain Payments",
     description:
-      "Pay with USDC via the x402 protocol. Seamless on-chain subscriptions for agent-to-agent commerce.",
+      "Pay with USDC via the x402 protocol. EVM-compatible, cross-chain support for SOL and BNB. Built for agent-to-agent commerce.",
   },
 ];
 
@@ -52,11 +52,11 @@ export function FeaturesSection() {
         >
           <h2 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4">
             Built for{" "}
-            <span className="gradient-text-primary">AI Agents</span>
+            <span className="gradient-text-primary">Autonomous Agents</span>
           </h2>
           <p className="text-lg text-text-secondary max-w-2xl mx-auto">
-            Purpose-built infrastructure for autonomous AI workloads that run
-            24/7.
+            Decentralized infrastructure for AI agents that never sleep.
+            Deploy, scale, and pay on-chain.
           </p>
         </motion.div>
 
