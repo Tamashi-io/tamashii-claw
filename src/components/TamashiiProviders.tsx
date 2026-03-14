@@ -21,7 +21,9 @@ export function TamashiiProviders({ children }: { children: ReactNode }) {
         defaultChain: base,
         supportedChains: [base, bsc],
         embeddedWallets: {
-          createOnLogin: "users-without-wallets",
+          ethereum: {
+            createOnLogin: "users-without-wallets",
+          },
         },
       }}
     >
