@@ -15,7 +15,6 @@ export function TamashiiProviders({ children }: { children: ReactNode }) {
         appearance: {
           theme: "dark",
           accentColor: "#22d3ee",
-          logo: "/logo.svg",
         },
         loginMethods: ["wallet", "email"],
         defaultChain: base,
