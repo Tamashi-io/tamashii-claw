@@ -7,13 +7,52 @@ import {
   http,
   type WalletClient,
 } from "viem";
-import { base } from "viem/chains";
+import { base, bsc } from "viem/chains";
 import { wrapAxiosWithPayment, x402Client } from "@x402/axios";
 import { ExactEvmScheme, toClientEvmSigner } from "@x402/evm";
+import { API_BASE } from "./api";
 
-/** x402 payments go through our NestJS backend */
+/** Backend API for payment proxying */
 const X402_PROXY_BASE =
   process.env.NEXT_PUBLIC_TAMASHIICLAW_API_URL || "/api";
+
+// ---------------------------------------------------------------------------
+// Chain configs
+// ---------------------------------------------------------------------------
+
+export type NetworkId = "base" | "bnb";
+
+export const NETWORKS: Record<
+  NetworkId,
+  {
+    chain: typeof base | typeof bsc;
+    chainIdHex: string;
+    name: string;
+    rpcUrl: string;
+    blockExplorer: string;
+    nativeCurrency: { name: string; symbol: string; decimals: number };
+    usdcAddress: string;
+  }
+> = {
+  base: {
+    chain: base,
+    chainIdHex: "0x2105",
+    name: "Base",
+    rpcUrl: "https://mainnet.base.org",
+    blockExplorer: "https://basescan.org",
+    nativeCurrency: { name: "Ethereum", symbol: "ETH", decimals: 18 },
+    usdcAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  },
+  bnb: {
+    chain: bsc,
+    chainIdHex: "0x38",
+    name: "BNB Chain",
+    rpcUrl: "https://bsc-dataseed.binance.org",
+    blockExplorer: "https://bscscan.com",
+    nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
+    usdcAddress: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Wallet
@@ -28,6 +67,7 @@ interface EthereumProvider {
 interface WalletState {
   client: WalletClient;
   address: string;
+  networkId: NetworkId;
 }
 
 let walletState: WalletState | null = null;
@@ -40,18 +80,22 @@ function getProvider(): EthereumProvider {
   return win.ethereum;
 }
 
-/** Ensure the wallet is on Base (chainId 0x2105). Prompts switch/add if not. */
-async function ensureBaseNetwork(provider: EthereumProvider): Promise<void> {
+/** Ensure wallet is on the specified network. Prompts switch/add if not. */
+async function ensureNetwork(
+  provider: EthereumProvider,
+  networkId: NetworkId,
+): Promise<void> {
+  const net = NETWORKS[networkId];
   const chainId = (await provider.request({
     method: "eth_chainId",
   })) as string;
 
-  if (chainId === "0x2105") return;
+  if (chainId.toLowerCase() === net.chainIdHex.toLowerCase()) return;
 
   try {
     await provider.request({
       method: "wallet_switchEthereumChain",
-      params: [{ chainId: "0x2105" }],
+      params: [{ chainId: net.chainIdHex }],
     });
   } catch (err: unknown) {
     const switchError = err as { code?: number };
@@ -60,15 +104,11 @@ async function ensureBaseNetwork(provider: EthereumProvider): Promise<void> {
         method: "wallet_addEthereumChain",
         params: [
           {
-            chainId: "0x2105",
-            chainName: "Base",
-            nativeCurrency: {
-              name: "Ethereum",
-              symbol: "ETH",
-              decimals: 18,
-            },
-            rpcUrls: ["https://mainnet.base.org"],
-            blockExplorerUrls: ["https://basescan.org"],
+            chainId: net.chainIdHex,
+            chainName: net.name,
+            nativeCurrency: net.nativeCurrency,
+            rpcUrls: [net.rpcUrl],
+            blockExplorerUrls: [net.blockExplorer],
           },
         ],
       });
@@ -78,8 +118,11 @@ async function ensureBaseNetwork(provider: EthereumProvider): Promise<void> {
   }
 }
 
-export async function connectWallet(): Promise<WalletState> {
-  if (walletState) return walletState;
+export async function connectWallet(
+  networkId: NetworkId = "base",
+): Promise<WalletState> {
+  // If already connected to the right network, reuse
+  if (walletState && walletState.networkId === networkId) return walletState;
 
   const provider = getProvider();
 
@@ -89,15 +132,16 @@ export async function connectWallet(): Promise<WalletState> {
 
   if (!accounts?.length) throw new Error("No accounts found");
 
-  await ensureBaseNetwork(provider);
+  await ensureNetwork(provider, networkId);
 
+  const net = NETWORKS[networkId];
   const client = createWalletClient({
     account: accounts[0] as `0x${string}`,
-    chain: base,
+    chain: net.chain,
     transport: custom(provider),
   });
 
-  walletState = { client, address: accounts[0] };
+  walletState = { client, address: accounts[0], networkId };
   return walletState;
 }
 
@@ -106,19 +150,17 @@ export function getWalletState(): WalletState | null {
 }
 
 // ---------------------------------------------------------------------------
-// x402 payment client
+// x402 payment client (Base only — direct x402)
 // ---------------------------------------------------------------------------
 
 let paymentApi: AxiosInstance | null = null;
 
 function buildPaymentApi(wallet: WalletClient): AxiosInstance {
-  // Create a public client for readContract calls (required by x402 v2)
   const publicClient = createPublicClient({
     chain: base,
     transport: http("https://mainnet.base.org"),
   });
 
-  // Build a ClientEvmSigner using the helper that wires up readContract
   const signer = toClientEvmSigner(
     {
       address: wallet.account!.address,
@@ -139,7 +181,7 @@ function buildPaymentApi(wallet: WalletClient): AxiosInstance {
           message: params.message as any,
         }),
     },
-    publicClient
+    publicClient,
   );
 
   const client = new x402Client();
@@ -154,19 +196,15 @@ function buildPaymentApi(wallet: WalletClient): AxiosInstance {
 }
 
 /**
- * Subscribe to a plan via x402 USDC payment on Base.
- *
- * JWT is optional — if provided, subscription links to the user account.
- * Otherwise a standalone API key is returned.
+ * Subscribe via x402 USDC payment on Base (direct).
  */
 export async function x402Subscribe(
   planId: string,
-  token?: string
+  token?: string,
 ): Promise<{ ok: boolean; plan_id: string; expires_at: string }> {
-  const wallet = await connectWallet();
+  const wallet = await connectWallet("base");
 
-  // Always verify the wallet is on Base before attempting payment
-  await ensureBaseNetwork(getProvider());
+  await ensureNetwork(getProvider(), "base");
 
   if (!paymentApi) {
     paymentApi = buildPaymentApi(wallet.client);
@@ -179,4 +217,168 @@ export async function x402Subscribe(
 
   const res = await paymentApi.post(`/x402/${planId}`, {}, { headers });
   return res.data;
+}
+
+// ---------------------------------------------------------------------------
+// Cross-chain swap + subscribe (BNB → Base USDC → operator → x402)
+// ---------------------------------------------------------------------------
+
+export interface SwapQuote {
+  id: string;
+  estimate: {
+    toAmount: string;
+    toAmountMin: string;
+    gasCosts: { amountUSD: string }[];
+    feeCosts: { amountUSD: string }[];
+  };
+  transactionRequest: {
+    to: string;
+    data: string;
+    value: string;
+    gasLimit: string;
+    gasPrice?: string;
+    chainId: number;
+  };
+  action: {
+    fromToken: { symbol: string; decimals: number; address: string };
+    toToken: { symbol: string; decimals: number; address: string };
+    fromAmount: string;
+  };
+}
+
+export type SwapStep =
+  | "idle"
+  | "quoting"
+  | "approving"
+  | "swapping"
+  | "bridging"
+  | "subscribing"
+  | "done"
+  | "error";
+
+/**
+ * Get a swap quote from backend (LI.FI proxy).
+ * toAddress is auto-set to operator wallet by backend.
+ */
+export async function getSwapQuote(
+  fromAddress: string,
+  amountUsd: number,
+): Promise<SwapQuote> {
+  // USDC has 18 decimals on BNB Chain (BSC-Peg USDC)
+  const fromAmount = String(BigInt(amountUsd) * BigInt(10 ** 18));
+
+  const res = await fetch(`${API_BASE}/swap/quote`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      fromChainId: 56,
+      toChainId: 8453,
+      fromTokenAddress: NETWORKS.bnb.usdcAddress,
+      toTokenAddress: NETWORKS.base.usdcAddress,
+      fromAmount,
+      fromAddress,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Swap quote failed: ${err}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Poll swap status until DONE or FAILED.
+ */
+async function pollSwapStatus(
+  txHash: string,
+  onStatus?: (status: string) => void,
+): Promise<void> {
+  const maxAttempts = 60; // 10 min at 10s intervals
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((r) => setTimeout(r, 10_000));
+
+    const res = await fetch(`${API_BASE}/swap/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ txHash, fromChainId: 56, toChainId: 8453 }),
+    });
+
+    if (!res.ok) continue;
+
+    const data = await res.json();
+    const status = data.status || data.result;
+    onStatus?.(status);
+
+    if (status === "DONE") return;
+    if (status === "FAILED" || status === "NOT_FOUND") {
+      throw new Error(`Swap ${status}: ${data.substatusMessage || "unknown"}`);
+    }
+  }
+  throw new Error("Swap timed out after 10 minutes");
+}
+
+/**
+ * Full BNB swap + subscribe flow:
+ * 1. Connect wallet on BNB
+ * 2. Get swap quote (USDC BNB → USDC Base, toAddress = operator wallet)
+ * 3. User signs swap transaction
+ * 4. Poll until bridged
+ * 5. Backend does server-side x402 subscribe
+ */
+export async function swapAndSubscribe(
+  planId: string,
+  amountUsd: number,
+  token?: string,
+  onStep?: (step: SwapStep, detail?: string) => void,
+): Promise<{ ok: boolean; plan_id: string; expires_at: string }> {
+  onStep?.("quoting");
+
+  // 1. Connect on BNB
+  const wallet = await connectWallet("bnb");
+  const provider = getProvider();
+  await ensureNetwork(provider, "bnb");
+
+  // 2. Get swap quote
+  const quote = await getSwapQuote(wallet.address, amountUsd);
+
+  // 3. Sign and send swap transaction
+  onStep?.("swapping");
+  const txHash = await wallet.client.sendTransaction({
+    account: wallet.client.account!,
+    to: quote.transactionRequest.to as `0x${string}`,
+    data: quote.transactionRequest.data as `0x${string}`,
+    value: BigInt(quote.transactionRequest.value || "0"),
+    chain: bsc,
+  });
+
+  // 4. Poll until bridged
+  onStep?.("bridging", txHash);
+  await pollSwapStatus(txHash, (status) => {
+    onStep?.("bridging", `${status}...`);
+  });
+
+  // 5. Backend does server-side x402 subscribe
+  onStep?.("subscribing");
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_BASE}/x402/swap-subscribe`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ planId, txHash, fromChainId: 56 }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Subscription failed: ${err}`);
+  }
+
+  onStep?.("done");
+  return res.json();
 }

@@ -2,10 +2,18 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, CreditCard, Coins, Wallet, Check } from "lucide-react";
+import { X, CreditCard, Coins, Wallet, Check, Loader2 } from "lucide-react";
 import { Plan, formatTokens } from "@/lib/format";
 import { apiFetch } from "@/lib/api";
-import { connectWallet, getWalletState, x402Subscribe } from "@/lib/x402";
+import {
+  connectWallet,
+  getWalletState,
+  x402Subscribe,
+  swapAndSubscribe,
+  type NetworkId,
+  type SwapStep,
+  NETWORKS,
+} from "@/lib/x402";
 
 interface PlanCheckoutModalProps {
   plan: Plan;
@@ -16,6 +24,17 @@ interface PlanCheckoutModalProps {
 
 type PaymentMethod = "card" | "crypto";
 
+const SWAP_STEP_LABELS: Record<SwapStep, string> = {
+  idle: "",
+  quoting: "Getting swap quote...",
+  approving: "Approve USDC spend...",
+  swapping: "Confirm swap transaction...",
+  bridging: "Bridging to Base...",
+  subscribing: "Activating subscription...",
+  done: "Done!",
+  error: "Failed",
+};
+
 export function PlanCheckoutModal({
   plan,
   isOpen,
@@ -23,11 +42,13 @@ export function PlanCheckoutModal({
   getToken,
 }: PlanCheckoutModalProps) {
   const [method, setMethod] = useState<PaymentMethod>("card");
+  const [network, setNetwork] = useState<NetworkId>("base");
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [swapStep, setSwapStep] = useState<SwapStep>("idle");
   const [walletAddress, setWalletAddress] = useState<string | null>(
-    () => getWalletState()?.address ?? null
+    () => getWalletState()?.address ?? null,
   );
 
   const handleClose = () => {
@@ -35,6 +56,8 @@ export function PlanCheckoutModal({
     setError(null);
     setSuccess(false);
     setMethod("card");
+    setNetwork("base");
+    setSwapStep("idle");
     onClose();
   };
 
@@ -54,48 +77,51 @@ export function PlanCheckoutModal({
             success_url: `${window.location.origin}/dashboard/plans?session_id={CHECKOUT_SESSION_ID}`,
             cancel_url: `${window.location.origin}${window.location.pathname}?cancelled=true`,
           }),
-        }
+        },
       );
       window.location.href = data.checkout_url;
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to create checkout session"
+        err instanceof Error ? err.message : "Failed to create checkout session",
       );
       setProcessing(false);
     }
   };
 
-  /* ── x402 USDC checkout ───────────────────────────────────────────── */
+  /* ── Connect wallet ───────────────────────────────────────────────── */
   const handleConnectWallet = async () => {
     setProcessing(true);
     setError(null);
     try {
-      const wallet = await connectWallet();
+      const wallet = await connectWallet(network);
       setWalletAddress(wallet.address);
     } catch (err: unknown) {
       setError(
-        err instanceof Error ? err.message : "Failed to connect wallet"
+        err instanceof Error ? err.message : "Failed to connect wallet",
       );
     } finally {
       setProcessing(false);
     }
   };
 
-  const handleCrypto = async () => {
+  /* ── x402 USDC on Base (direct) ───────────────────────────────────── */
+  const handleCryptoBase = async () => {
     setProcessing(true);
     setError(null);
     try {
       const token = await getToken();
       await x402Subscribe(plan.id, token || undefined);
       setSuccess(true);
-      // Auto-close after showing success
       setTimeout(() => {
         handleClose();
         window.location.reload();
       }, 2000);
     } catch (err: unknown) {
       let msg = "Payment failed. Please try again.";
-      const axiosErr = err as { response?: { data?: { detail?: unknown } }; message?: string };
+      const axiosErr = err as {
+        response?: { data?: { detail?: unknown } };
+        message?: string;
+      };
       if (axiosErr.response?.data?.detail) {
         msg =
           typeof axiosErr.response.data.detail === "string"
@@ -110,20 +136,47 @@ export function PlanCheckoutModal({
     }
   };
 
+  /* ── Cross-chain swap from BNB ────────────────────────────────────── */
+  const handleCryptoBnb = async () => {
+    setProcessing(true);
+    setError(null);
+    setSwapStep("quoting");
+    try {
+      const token = await getToken();
+      await swapAndSubscribe(plan.id, plan.price, token || undefined, (step) => {
+        setSwapStep(step);
+      });
+      setSuccess(true);
+      setTimeout(() => {
+        handleClose();
+        window.location.reload();
+      }, 2000);
+    } catch (err: unknown) {
+      setSwapStep("error");
+      setError(err instanceof Error ? err.message : "Swap failed");
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const handleSubmit = () => {
     if (method === "card") {
       handleCard();
     } else if (!walletAddress) {
       handleConnectWallet();
+    } else if (network === "bnb") {
+      handleCryptoBnb();
     } else {
-      handleCrypto();
+      handleCryptoBase();
     }
   };
 
   const buttonLabel = () => {
+    if (processing && swapStep !== "idle") return SWAP_STEP_LABELS[swapStep];
     if (processing) return "Processing...";
     if (method === "card") return `Pay $${plan.price} with Card`;
-    if (!walletAddress) return "Connect Wallet";
+    if (!walletAddress) return `Connect Wallet (${NETWORKS[network].name})`;
+    if (network === "bnb") return `Swap & Pay $${plan.price} USDC via BNB`;
     return `Pay $${plan.price} with USDC`;
   };
 
@@ -178,10 +231,14 @@ export function PlanCheckoutModal({
                   {/* Plan summary */}
                   <div className="p-4 rounded-lg bg-surface-low/50 border border-border mb-6">
                     <div className="flex items-baseline justify-between mb-1">
-                      <span className="text-foreground font-medium">{plan.name}</span>
+                      <span className="text-foreground font-medium">
+                        {plan.name}
+                      </span>
                       <span className="text-foreground font-bold">
                         ${plan.price}
-                        <span className="text-text-muted text-sm font-normal">/mo</span>
+                        <span className="text-text-muted text-sm font-normal">
+                          /mo
+                        </span>
                       </span>
                     </div>
                     <p className="text-sm text-text-tertiary">
@@ -191,8 +248,8 @@ export function PlanCheckoutModal({
                     </p>
                     {(plan.agents ?? 0) > 0 && (
                       <p className="text-sm text-text-tertiary mt-1">
-                        {plan.agents} agent{(plan.agents ?? 0) > 1 ? "s" : ""} &middot;{" "}
-                        {plan.aiu} AIU
+                        {plan.agents} agent{(plan.agents ?? 0) > 1 ? "s" : ""}{" "}
+                        &middot; {plan.aiu} AIU
                       </p>
                     )}
                   </div>
@@ -233,22 +290,71 @@ export function PlanCheckoutModal({
                         <div className="text-sm font-medium text-foreground">
                           USDC
                         </div>
-                        <div className="text-xs text-text-muted">x402 on Base</div>
+                        <div className="text-xs text-text-muted">
+                          Base or BNB
+                        </div>
                       </button>
                     </div>
                   </div>
+
+                  {/* Network selector (crypto only) */}
+                  {method === "crypto" && (
+                    <div className="mb-4">
+                      <label className="block text-xs font-medium text-text-secondary mb-2">
+                        Network
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNetwork("base");
+                            setWalletAddress(null);
+                            setSwapStep("idle");
+                          }}
+                          disabled={processing}
+                          className={`px-3 py-2.5 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                            network === "base"
+                              ? "border-primary/60 bg-primary/10 text-foreground"
+                              : "border-border text-text-muted hover:border-border-medium"
+                          } disabled:opacity-50`}
+                        >
+                          <span className="w-4 h-4 rounded-full bg-[#0052FF] inline-block" />
+                          Base
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNetwork("bnb");
+                            setWalletAddress(null);
+                            setSwapStep("idle");
+                          }}
+                          disabled={processing}
+                          className={`px-3 py-2.5 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                            network === "bnb"
+                              ? "border-primary/60 bg-primary/10 text-foreground"
+                              : "border-border text-text-muted hover:border-border-medium"
+                          } disabled:opacity-50`}
+                        >
+                          <span className="w-4 h-4 rounded-full bg-[#F0B90B] inline-block" />
+                          BNB Chain
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Crypto wallet status */}
                   {method === "crypto" && (
                     <div className="mb-4 p-3 rounded-lg bg-surface-low/50 border border-border text-sm">
                       {walletAddress ? (
                         <div className="flex items-center gap-2 text-text-secondary">
-                          <Wallet className="w-4 h-4 text-primary" />
+                          <Wallet className="w-4 h-4 text-primary flex-shrink-0" />
                           <span className="font-mono text-xs">
-                            {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+                            {walletAddress.slice(0, 6)}...
+                            {walletAddress.slice(-4)}
                           </span>
                           <span className="text-text-muted ml-auto">
-                            ${plan.price} USDC on Base
+                            ${plan.price} USDC
+                            {network === "bnb" && " via swap"}
                           </span>
                         </div>
                       ) : (
@@ -257,11 +363,42 @@ export function PlanCheckoutModal({
                           <span className="text-foreground font-medium">
                             ${plan.price} USDC
                           </span>{" "}
-                          on Base.
+                          on {NETWORKS[network].name}.
+                          {network === "bnb" && (
+                            <span className="block text-xs mt-1 text-text-tertiary">
+                              USDC will be bridged from BNB Chain to Base via
+                              LI.FI.
+                            </span>
+                          )}
                         </p>
                       )}
                     </div>
                   )}
+
+                  {/* Swap progress indicator */}
+                  {method === "crypto" &&
+                    network === "bnb" &&
+                    swapStep !== "idle" && (
+                      <div className="mb-4 p-3 rounded-lg bg-surface-low/50 border border-border">
+                        <div className="flex items-center gap-2 text-sm">
+                          {swapStep !== "done" && swapStep !== "error" && (
+                            <Loader2 className="w-4 h-4 text-primary animate-spin flex-shrink-0" />
+                          )}
+                          {swapStep === "done" && (
+                            <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
+                          )}
+                          <span
+                            className={
+                              swapStep === "error"
+                                ? "text-destructive"
+                                : "text-text-secondary"
+                            }
+                          >
+                            {SWAP_STEP_LABELS[swapStep]}
+                          </span>
+                        </div>
+                      </div>
+                    )}
 
                   {/* Error */}
                   {error && (
