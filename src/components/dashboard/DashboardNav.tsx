@@ -1,7 +1,8 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Bot, Key, CreditCard, Settings } from "lucide-react";
+import { LayoutDashboard, Bot, Key, CreditCard, Settings, LogOut } from "lucide-react";
+import { useTamashiiAuth } from "@/components/TamashiiAuthProvider";
 
 const navItems = [
   { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
@@ -14,6 +15,14 @@ const navItems = [
 export function DashboardNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const { user, logout } = useTamashiiAuth();
+
+  // Truncate wallet address for display
+  const displayAddress = user?.walletAddress
+    ? `${user.walletAddress.slice(0, 6)}...${user.walletAddress.slice(-4)}`
+    : null;
+
+  const displayName = user?.email || displayAddress || "Account";
 
   return (
     <>
@@ -47,6 +56,18 @@ export function DashboardNav() {
                   );
                 })}
               </nav>
+            </div>
+
+            {/* User info + logout (desktop) */}
+            <div className="hidden md:flex items-center gap-3">
+              <span className="text-xs text-text-tertiary">{displayName}</span>
+              <button
+                onClick={() => logout()}
+                className="flex items-center gap-1.5 text-xs text-text-muted hover:text-destructive transition-colors px-2 py-1 rounded-md hover:bg-surface-low/50"
+                title="Sign out"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
         </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Menu, X } from "lucide-react";
+import { useTamashiiAuth } from "@/components/TamashiiAuthProvider";
 
 const navLinks = [
   { label: "Features", href: "#features" },
@@ -14,6 +15,7 @@ export function TamashiiHeader() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const router = useRouter();
+  const { isAuthenticated, login } = useTamashiiAuth();
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 10);
@@ -56,12 +58,29 @@ export function TamashiiHeader() {
           </nav>
 
           <div className="hidden md:flex items-center gap-3">
-            <button
-              onClick={() => router.push("/dashboard")}
-              className="btn-primary px-4 py-2 rounded-lg text-sm font-medium"
-            >
-              Launch App
-            </button>
+            {isAuthenticated ? (
+              <button
+                onClick={() => router.push("/dashboard")}
+                className="btn-primary px-4 py-2 rounded-lg text-sm font-medium"
+              >
+                Launch App
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={login}
+                  className="text-text-secondary hover:text-foreground text-sm font-medium transition-colors"
+                >
+                  Sign In
+                </button>
+                <button
+                  onClick={login}
+                  className="btn-primary px-4 py-2 rounded-lg text-sm font-medium"
+                >
+                  Get Started
+                </button>
+              </>
+            )}
           </div>
 
           <button
@@ -89,13 +108,22 @@ export function TamashiiHeader() {
                 </a>
               ))}
             </nav>
-            <div className="mt-4">
-              <button
-                onClick={() => { setMobileOpen(false); router.push("/dashboard"); }}
-                className="btn-primary px-4 py-2 rounded-lg text-sm font-medium w-full"
-              >
-                Launch App
-              </button>
+            <div className="mt-4 flex flex-col gap-2">
+              {isAuthenticated ? (
+                <button
+                  onClick={() => { setMobileOpen(false); router.push("/dashboard"); }}
+                  className="btn-primary px-4 py-2 rounded-lg text-sm font-medium w-full"
+                >
+                  Launch App
+                </button>
+              ) : (
+                <button
+                  onClick={() => { setMobileOpen(false); login(); }}
+                  className="btn-primary px-4 py-2 rounded-lg text-sm font-medium w-full"
+                >
+                  Sign In
+                </button>
+              )}
             </div>
           </div>
         )}
