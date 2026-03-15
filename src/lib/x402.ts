@@ -320,12 +320,73 @@ async function pollSwapStatus(
 }
 
 /**
+ * Check ERC-20 allowance and approve if needed.
+ */
+async function ensureTokenApproval(
+  provider: EthereumProvider,
+  tokenAddress: string,
+  ownerAddress: string,
+  spenderAddress: string,
+  requiredAmount: bigint,
+  walletClient: WalletClient,
+): Promise<void> {
+  // ERC-20 allowance(owner, spender) selector: 0xdd62ed3e
+  const allowanceData =
+    "0xdd62ed3e" +
+    ownerAddress.slice(2).padStart(64, "0") +
+    spenderAddress.slice(2).padStart(64, "0");
+
+  const result = (await provider.request({
+    method: "eth_call",
+    params: [{ to: tokenAddress, data: allowanceData }, "latest"],
+  })) as string;
+
+  const currentAllowance = BigInt(result || "0");
+
+  if (currentAllowance >= requiredAmount) {
+    console.log("[swap] Token already approved, allowance:", currentAllowance.toString());
+    return;
+  }
+
+  console.log("[swap] Approving token spend...", {
+    current: currentAllowance.toString(),
+    required: requiredAmount.toString(),
+  });
+
+  // approve(spender, type(uint256).max) selector: 0x095ea7b3
+  const maxUint256 = "0x" + "f".repeat(64);
+  const approveData =
+    "0x095ea7b3" +
+    spenderAddress.slice(2).padStart(64, "0") +
+    maxUint256.slice(2);
+
+  const txHash = await walletClient.sendTransaction({
+    account: walletClient.account!,
+    to: tokenAddress as `0x${string}`,
+    data: approveData as `0x${string}`,
+    value: BigInt(0),
+    chain: bsc,
+  });
+
+  console.log("[swap] Approval tx:", txHash);
+
+  // Wait for confirmation
+  const publicClient = createPublicClient({
+    chain: bsc,
+    transport: http(NETWORKS.bnb.rpcUrl),
+  });
+  await publicClient.waitForTransactionReceipt({ hash: txHash });
+  console.log("[swap] Approval confirmed");
+}
+
+/**
  * Full BNB swap + subscribe flow:
  * 1. Connect wallet on BNB
  * 2. Get swap quote (USDC BNB → USDC Base, toAddress = operator wallet)
- * 3. User signs swap transaction
- * 4. Poll until bridged
- * 5. Backend does server-side x402 subscribe
+ * 3. Approve USDC for LI.FI contract
+ * 4. User signs swap transaction
+ * 5. Poll until bridged
+ * 6. Backend does server-side x402 subscribe
  */
 export async function swapAndSubscribe(
   planId: string,
@@ -343,7 +404,18 @@ export async function swapAndSubscribe(
   // 2. Get swap quote
   const quote = await getSwapQuote(wallet.address, amountUsd);
 
-  // 3. Sign and send swap transaction
+  // 3. Approve USDC for LI.FI diamond contract
+  onStep?.("approving");
+  await ensureTokenApproval(
+    provider,
+    NETWORKS.bnb.usdcAddress,
+    wallet.address,
+    quote.transactionRequest.to, // LI.FI diamond contract
+    BigInt(quote.action.fromAmount),
+    wallet.client,
+  );
+
+  // 4. Sign and send swap transaction
   onStep?.("swapping");
   const txHash = await wallet.client.sendTransaction({
     account: wallet.client.account!,
