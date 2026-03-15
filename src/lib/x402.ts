@@ -442,6 +442,13 @@ export async function swapAndSubscribe(
 
   // 2. Get swap quote
   const quote = await getSwapQuote(wallet.address, amountUsd, payToken);
+  console.log("[swap] Quote received:", {
+    fromToken: quote.action.fromToken.symbol,
+    fromAmount: quote.action.fromAmount,
+    toAmount: quote.estimate.toAmount,
+    value: quote.transactionRequest.value,
+    gasLimit: quote.transactionRequest.gasLimit,
+  });
 
   // 3. Approve token for LI.FI (skip for native BNB — no approval needed)
   if (payToken !== "bnb") {
@@ -458,13 +465,23 @@ export async function swapAndSubscribe(
 
   // 4. Sign and send swap transaction
   onStep?.("swapping");
-  const txHash = await wallet.client.sendTransaction({
+  console.log("[swap] transactionRequest:", JSON.stringify(quote.transactionRequest, null, 2));
+  const txParams: Parameters<typeof wallet.client.sendTransaction>[0] = {
     account: wallet.client.account!,
     to: quote.transactionRequest.to as `0x${string}`,
     data: quote.transactionRequest.data as `0x${string}`,
     value: BigInt(quote.transactionRequest.value || "0"),
     chain: bsc,
-  });
+  };
+  // Use gasLimit from LI.FI quote (critical for native BNB swaps where
+  // wallet auto-estimation can fail on complex cross-chain calldata)
+  if (quote.transactionRequest.gasLimit) {
+    txParams.gas = BigInt(quote.transactionRequest.gasLimit);
+  }
+  if (quote.transactionRequest.gasPrice) {
+    txParams.gasPrice = BigInt(quote.transactionRequest.gasPrice);
+  }
+  const txHash = await wallet.client.sendTransaction(txParams);
 
   // 4. Poll until bridged
   onStep?.("bridging", txHash);
