@@ -256,16 +256,54 @@ export type SwapStep =
   | "done"
   | "error";
 
+/** LI.FI uses this address for native tokens (BNB, ETH, etc.) */
+const NATIVE_TOKEN_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+export type BnbPayToken = "usdc" | "bnb";
+
+/**
+ * Fetch the BNB/USD price to calculate how much BNB is needed.
+ */
+async function getBnbPriceUsd(): Promise<number> {
+  try {
+    const res = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=binancecoin&vs_currencies=usd",
+    );
+    if (!res.ok) throw new Error("Price fetch failed");
+    const data = await res.json();
+    return data.binancecoin.usd;
+  } catch {
+    console.warn("[swap] Could not fetch BNB price, using fallback $600");
+    return 600;
+  }
+}
+
 /**
  * Get a swap quote from backend (LI.FI proxy).
+ * Supports both BNB native and USDC as source token.
  * toAddress is auto-set to operator wallet by backend.
  */
 export async function getSwapQuote(
   fromAddress: string,
   amountUsd: number,
+  payToken: BnbPayToken = "usdc",
 ): Promise<SwapQuote> {
-  // USDC has 18 decimals on BNB Chain (BSC-Peg USDC)
-  const fromAmount = String(BigInt(amountUsd) * BigInt(10 ** 18));
+  let fromTokenAddress: string;
+  let fromAmount: string;
+
+  if (payToken === "bnb") {
+    // Native BNB (18 decimals) — calculate from USD price + 5% slippage buffer
+    const bnbPrice = await getBnbPriceUsd();
+    const bnbNeeded = (amountUsd / bnbPrice) * 1.05;
+    const bnbWei = BigInt(Math.ceil(bnbNeeded * 1e18));
+    fromTokenAddress = NATIVE_TOKEN_ADDRESS;
+    fromAmount = bnbWei.toString();
+    console.log(`[swap] BNB price: $${bnbPrice}, sending ~${bnbNeeded.toFixed(6)} BNB`);
+  } else {
+    // BSC-Peg USDC (18 decimals)
+    fromTokenAddress = NETWORKS.bnb.usdcAddress;
+    fromAmount = String(BigInt(amountUsd) * BigInt(10 ** 18));
+  }
 
   const res = await fetch(`${API_BASE}/swap/quote`, {
     method: "POST",
@@ -273,7 +311,7 @@ export async function getSwapQuote(
     body: JSON.stringify({
       fromChainId: 56,
       toChainId: 8453,
-      fromTokenAddress: NETWORKS.bnb.usdcAddress,
+      fromTokenAddress,
       toTokenAddress: NETWORKS.base.usdcAddress,
       fromAmount,
       fromAddress,
@@ -393,6 +431,7 @@ export async function swapAndSubscribe(
   amountUsd: number,
   token?: string,
   onStep?: (step: SwapStep, detail?: string) => void,
+  payToken: BnbPayToken = "usdc",
 ): Promise<{ ok: boolean; plan_id: string; expires_at: string }> {
   onStep?.("quoting");
 
@@ -402,18 +441,20 @@ export async function swapAndSubscribe(
   await ensureNetwork(provider, "bnb");
 
   // 2. Get swap quote
-  const quote = await getSwapQuote(wallet.address, amountUsd);
+  const quote = await getSwapQuote(wallet.address, amountUsd, payToken);
 
-  // 3. Approve USDC for LI.FI diamond contract
-  onStep?.("approving");
-  await ensureTokenApproval(
-    provider,
-    NETWORKS.bnb.usdcAddress,
-    wallet.address,
-    quote.transactionRequest.to, // LI.FI diamond contract
-    BigInt(quote.action.fromAmount),
-    wallet.client,
-  );
+  // 3. Approve token for LI.FI (skip for native BNB — no approval needed)
+  if (payToken !== "bnb") {
+    onStep?.("approving");
+    await ensureTokenApproval(
+      provider,
+      NETWORKS.bnb.usdcAddress,
+      wallet.address,
+      quote.transactionRequest.to,
+      BigInt(quote.action.fromAmount),
+      wallet.client,
+    );
+  }
 
   // 4. Sign and send swap transaction
   onStep?.("swapping");

@@ -12,6 +12,7 @@ import {
   swapAndSubscribe,
   type NetworkId,
   type SwapStep,
+  type BnbPayToken,
   NETWORKS,
 } from "@/lib/x402";
 
@@ -27,7 +28,7 @@ type PaymentMethod = "card" | "crypto";
 const SWAP_STEP_LABELS: Record<SwapStep, string> = {
   idle: "",
   quoting: "Getting swap quote...",
-  approving: "Approve USDC spend...",
+  approving: "Approve token spend...",
   swapping: "Confirm swap transaction...",
   bridging: "Bridging to Base...",
   subscribing: "Activating subscription...",
@@ -43,6 +44,7 @@ export function PlanCheckoutModal({
 }: PlanCheckoutModalProps) {
   const [method, setMethod] = useState<PaymentMethod>("card");
   const [network, setNetwork] = useState<NetworkId>("base");
+  const [bnbPayToken, setBnbPayToken] = useState<BnbPayToken>("bnb");
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -57,6 +59,7 @@ export function PlanCheckoutModal({
     setSuccess(false);
     setMethod("card");
     setNetwork("base");
+    setBnbPayToken("bnb");
     setSwapStep("idle");
     onClose();
   };
@@ -143,9 +146,15 @@ export function PlanCheckoutModal({
     setSwapStep("quoting");
     try {
       const token = await getToken();
-      await swapAndSubscribe(plan.id, plan.price, token || undefined, (step) => {
-        setSwapStep(step);
-      });
+      await swapAndSubscribe(
+        plan.id,
+        plan.price,
+        token || undefined,
+        (step) => {
+          setSwapStep(step);
+        },
+        bnbPayToken,
+      );
       setSuccess(true);
       setTimeout(() => {
         handleClose();
@@ -176,7 +185,10 @@ export function PlanCheckoutModal({
     if (processing) return "Processing...";
     if (method === "card") return `Pay $${plan.price} with Card`;
     if (!walletAddress) return `Connect Wallet (${NETWORKS[network].name})`;
-    if (network === "bnb") return `Swap & Pay $${plan.price} USDC via BNB`;
+    if (network === "bnb") {
+      const tokenLabel = bnbPayToken === "bnb" ? "BNB" : "USDC";
+      return `Swap ${tokenLabel} & Pay $${plan.price}`;
+    }
     return `Pay $${plan.price} with USDC`;
   };
 
@@ -288,10 +300,10 @@ export function PlanCheckoutModal({
                       >
                         <Coins className="w-5 h-5 text-foreground" />
                         <div className="text-sm font-medium text-foreground">
-                          USDC
+                          Crypto
                         </div>
                         <div className="text-xs text-text-muted">
-                          Base or BNB
+                          USDC or BNB
                         </div>
                       </button>
                     </div>
@@ -342,6 +354,43 @@ export function PlanCheckoutModal({
                     </div>
                   )}
 
+                  {/* Token selector (BNB network only) */}
+                  {method === "crypto" && network === "bnb" && (
+                    <div className="mb-4">
+                      <label className="block text-xs font-medium text-text-secondary mb-2">
+                        Pay with
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setBnbPayToken("bnb")}
+                          disabled={processing}
+                          className={`px-3 py-2 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                            bnbPayToken === "bnb"
+                              ? "border-[#F0B90B]/60 bg-[#F0B90B]/10 text-foreground"
+                              : "border-border text-text-muted hover:border-border-medium"
+                          } disabled:opacity-50`}
+                        >
+                          <span className="text-base">◆</span>
+                          BNB
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBnbPayToken("usdc")}
+                          disabled={processing}
+                          className={`px-3 py-2 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                            bnbPayToken === "usdc"
+                              ? "border-[#2775CA]/60 bg-[#2775CA]/10 text-foreground"
+                              : "border-border text-text-muted hover:border-border-medium"
+                          } disabled:opacity-50`}
+                        >
+                          <span className="text-base">$</span>
+                          USDC
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Crypto wallet status */}
                   {method === "crypto" && (
                     <div className="mb-4 p-3 rounded-lg bg-surface-low/50 border border-border text-sm">
@@ -353,21 +402,27 @@ export function PlanCheckoutModal({
                             {walletAddress.slice(-4)}
                           </span>
                           <span className="text-text-muted ml-auto">
-                            ${plan.price} USDC
-                            {network === "bnb" && " via swap"}
+                            {network === "bnb"
+                              ? bnbPayToken === "bnb"
+                                ? `~$${plan.price} in BNB`
+                                : `${plan.price} USDC`
+                              : `${plan.price} USDC`}
+                            {network === "bnb" && " → Base"}
                           </span>
                         </div>
                       ) : (
                         <p className="text-text-muted">
                           Connect your wallet to pay{" "}
                           <span className="text-foreground font-medium">
-                            ${plan.price} USDC
+                            {network === "bnb" && bnbPayToken === "bnb"
+                              ? `~$${plan.price} in BNB`
+                              : `$${plan.price} USDC`}
                           </span>{" "}
                           on {NETWORKS[network].name}.
                           {network === "bnb" && (
                             <span className="block text-xs mt-1 text-text-tertiary">
-                              USDC will be bridged from BNB Chain to Base via
-                              LI.FI.
+                              {bnbPayToken === "bnb" ? "BNB" : "USDC"} will be
+                              swapped &amp; bridged to Base USDC via LI.FI.
                             </span>
                           )}
                         </p>
