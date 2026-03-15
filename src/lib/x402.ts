@@ -337,28 +337,14 @@ function ensureLiFiConfig() {
 }
 
 /**
- * Fetch the BNB/USD price to calculate how much BNB is needed.
- */
-async function getBnbPriceUsd(): Promise<number> {
-  try {
-    const res = await fetch(
-      "https://api.coingecko.com/api/v3/simple/price?ids=binancecoin&vs_currencies=usd",
-    );
-    if (!res.ok) throw new Error("Price fetch failed");
-    const data = await res.json();
-    return data.binancecoin.usd;
-  } catch {
-    console.warn("[swap] Could not fetch BNB price, using fallback $600");
-    return 600;
-  }
-}
-
-/**
  * Full BNB swap + subscribe flow using LI.FI SDK:
  * 1. Connect wallet on BNB
  * 2. LI.FI SDK: getQuote → convertQuoteToRoute → executeRoute
  *    (handles approvals, gas, chain switching, tx submission, status tracking)
  * 3. Backend does server-side x402 subscribe with the operator wallet
+ *
+ * For native BNB: uses toAmount so LI.FI calculates exact BNB needed.
+ * For USDC: uses fromAmount (18-decimal BSC-Peg USDC).
  */
 export async function swapAndSubscribe(
   planId: string,
@@ -379,90 +365,125 @@ export async function swapAndSubscribe(
   // 2. Init LI.FI SDK with user's wallet
   ensureLiFiConfig();
 
-  // 3. Determine source token and amount
-  let fromToken: string;
-  let fromAmount: string;
+  // 3. Get quote from LI.FI SDK
+  //    For native BNB we use toAmount (let LI.FI calculate BNB needed).
+  //    For USDC we use fromAmount (exact USDC amount on BSC).
+  const fromToken =
+    payToken === "bnb" ? NATIVE_TOKEN_ADDRESS : NETWORKS.bnb.usdcAddress;
+
+  // Base USDC has 6 decimals
+  const toAmountUsdc = String(amountUsd * 1_000_000);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let quoteParams: any;
 
   if (payToken === "bnb") {
-    const bnbPrice = await getBnbPriceUsd();
-    const bnbNeeded = (amountUsd / bnbPrice) * 1.05; // 5% slippage buffer
-    const bnbWei = BigInt(Math.ceil(bnbNeeded * 1e18));
-    fromToken = NATIVE_TOKEN_ADDRESS;
-    fromAmount = bnbWei.toString();
-    console.log(`[swap] BNB price: $${bnbPrice}, sending ~${bnbNeeded.toFixed(6)} BNB`);
+    // toAmount mode: "deliver X USDC on Base, calculate BNB needed"
+    quoteParams = {
+      fromChain: 56,
+      toChain: 8453,
+      fromToken,
+      toToken: NETWORKS.base.usdcAddress,
+      toAmount: toAmountUsdc,
+      fromAddress: wallet.address,
+      toAddress: OPERATOR_WALLET,
+      slippage: 0.03, // 3% slippage
+    };
+    console.log(`[swap] Requesting toAmount quote: ${amountUsd} USDC on Base, pay with BNB`);
   } else {
-    // BSC-Peg USDC (18 decimals)
-    fromToken = NETWORKS.bnb.usdcAddress;
-    fromAmount = String(BigInt(amountUsd) * BigInt(10 ** 18));
+    // fromAmount mode: "send X USDC from BSC" (18 decimals)
+    const fromAmount = String(BigInt(amountUsd) * BigInt(10 ** 18));
+    quoteParams = {
+      fromChain: 56,
+      toChain: 8453,
+      fromToken,
+      toToken: NETWORKS.base.usdcAddress,
+      fromAmount,
+      fromAddress: wallet.address,
+      toAddress: OPERATOR_WALLET,
+      slippage: 0.005, // 0.5% slippage for stablecoin
+    };
+    console.log(`[swap] Requesting fromAmount quote: ${amountUsd} USDC BSC → Base`);
   }
 
-  // 4. Get quote from LI.FI SDK (sends funds to operator wallet on Base)
-  const quote = await getLiFiQuote({
-    fromChain: 56,           // BNB Chain
-    toChain: 8453,           // Base
-    fromToken,
-    toToken: NETWORKS.base.usdcAddress,
-    fromAmount,
-    fromAddress: wallet.address,
-    toAddress: OPERATOR_WALLET,
-  });
+  const quote = await getLiFiQuote(quoteParams);
 
   console.log("[swap] LI.FI quote:", {
     fromToken: quote.action.fromToken.symbol,
     fromAmount: quote.action.fromAmount,
     toAmount: quote.estimate.toAmount,
+    toAmountMin: quote.estimate.toAmountMin,
     tool: quote.tool,
+    approvalAddress: quote.estimate.approvalAddress,
   });
 
-  // 5. Convert quote to route and execute via SDK
+  // 4. Convert quote to route and execute via SDK
   //    SDK handles: approvals, gas estimation, tx submission, status polling
   const route = convertQuoteToRoute(quote);
   let txHash = "";
 
-  const executedRoute: RouteExtended = await executeRoute(route, {
-    updateRouteHook(updatedRoute) {
-      // Map SDK execution progress to our SwapStep for the UI
-      for (const step of updatedRoute.steps) {
-        if (!step.execution?.process) continue;
-        for (const process of step.execution.process) {
-          // Capture tx hash
-          if (process.txHash && !txHash) {
-            txHash = process.txHash;
-          }
+  try {
+    const executedRoute: RouteExtended = await executeRoute(route, {
+      updateRouteHook(updatedRoute) {
+        // Map SDK execution progress to our SwapStep for the UI
+        for (const step of updatedRoute.steps) {
+          if (!step.execution?.process) continue;
+          for (const process of step.execution.process) {
+            // Capture tx hash
+            if (process.txHash && !txHash) {
+              txHash = process.txHash;
+            }
 
-          switch (process.type) {
-            case "TOKEN_ALLOWANCE":
-              if (process.status === "PENDING" || process.status === "STARTED") {
-                onStep?.("approving");
-              }
-              break;
-            case "SWAP":
-            case "CROSS_CHAIN":
-              if (process.status === "PENDING" || process.status === "STARTED") {
-                onStep?.("swapping");
-              }
-              if (process.status === "ACTION_REQUIRED") {
-                onStep?.("swapping", "Sign transaction in wallet...");
-              }
-              break;
-            case "RECEIVING_CHAIN":
-              onStep?.("bridging", txHash || undefined);
-              break;
+            // Log all process updates for debugging
+            console.log(`[swap] Process: type=${process.type} status=${process.status} txHash=${process.txHash || "—"}`);
+
+            switch (process.type) {
+              case "TOKEN_ALLOWANCE":
+                if (process.status === "PENDING" || process.status === "STARTED") {
+                  onStep?.("approving");
+                }
+                break;
+              case "SWAP":
+              case "CROSS_CHAIN":
+                if (process.status === "ACTION_REQUIRED") {
+                  onStep?.("swapping", "Sign transaction in wallet...");
+                } else if (process.status === "PENDING" || process.status === "STARTED") {
+                  onStep?.("swapping");
+                }
+                break;
+              case "RECEIVING_CHAIN":
+                onStep?.("bridging", txHash || undefined);
+                break;
+            }
           }
         }
-      }
-    },
-  });
+      },
+    });
 
-  // Extract tx hash from the executed route if not captured yet
-  if (!txHash) {
-    for (const step of executedRoute.steps) {
-      const proc = step.execution?.process?.find((p) => p.txHash);
-      if (proc?.txHash) {
-        txHash = proc.txHash;
-        break;
+    // Extract tx hash from the executed route if not captured yet
+    if (!txHash) {
+      for (const step of executedRoute.steps) {
+        const proc = step.execution?.process?.find((p) => p.txHash);
+        if (proc?.txHash) {
+          txHash = proc.txHash;
+          break;
+        }
       }
     }
+  } catch (err: unknown) {
+    // Log detailed error info for debugging
+    const error = err as { message?: string; code?: string; step?: unknown; process?: unknown };
+    console.error("[swap] executeRoute failed:", {
+      message: error.message,
+      code: error.code,
+      step: error.step,
+      process: error.process,
+      txHash,
+      raw: err,
+    });
+    throw new Error(
+      `Swap failed: ${error.message || "Unknown error"}${txHash ? ` (tx: ${txHash})` : ""}`,
+    );
   }
 
   console.log("[swap] Route executed, txHash:", txHash);
@@ -471,7 +492,7 @@ export async function swapAndSubscribe(
     throw new Error("Swap completed but no transaction hash found");
   }
 
-  // 6. Backend does server-side x402 subscribe
+  // 5. Backend does server-side x402 subscribe
   onStep?.("subscribing");
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
