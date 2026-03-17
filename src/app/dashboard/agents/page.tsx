@@ -52,7 +52,7 @@ export default function AgentsPage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
-  const [preset, setPreset] = useState(1); // default Medium
+  const [preset, setPreset] = useState(0); // default Small
 
   // Whether the current plan is a paid plan (not "free")
   const [hasPaidPlan, setHasPaidPlan] = useState(false);
