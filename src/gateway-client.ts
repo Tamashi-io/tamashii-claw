@@ -42,6 +42,13 @@ export class GatewayClient {
   private _version: string | null = null;
   private _protocol: number | null = null;
 
+  private async readData(data: unknown): Promise<string> {
+    if (typeof data === "string") return data;
+    if (data instanceof Blob) return data.text();
+    if (data instanceof ArrayBuffer) return new TextDecoder().decode(data);
+    return String(data);
+  }
+
   constructor(config: GatewayConfig) {
     this.config = {
       gatewayToken: "traefik-forwarded-auth-not-used",
@@ -69,8 +76,8 @@ export class GatewayClient {
         this.ws?.close();
       }, DEFAULT_TIMEOUT);
 
-      this.ws.onmessage = (ev) => {
-        const msg = JSON.parse(ev.data);
+      this.ws.onmessage = async (ev) => {
+        const msg = JSON.parse(await this.readData(ev.data));
 
         if (handshakePhase === "challenge") {
           if (msg.event !== "connect.challenge") {
@@ -108,7 +115,7 @@ export class GatewayClient {
             this._version = msg.payload?.version ?? null;
             this._protocol = msg.payload?.protocol ?? null;
             handshakePhase = "done";
-            this.ws!.onmessage = (ev2) => this.handleMessage(JSON.parse(ev2.data));
+            this.ws!.onmessage = async (ev2) => this.handleMessage(JSON.parse(await this.readData(ev2.data)));
             resolve();
           } else {
             reject(new Error(msg.error?.message ?? "Connection rejected"));
