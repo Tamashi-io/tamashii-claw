@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
-import { Send, ArrowLeft, Loader2, MessageSquare, FolderOpen, Settings } from "lucide-react";
+import { Send, ArrowLeft, Loader2, MessageSquare, FolderOpen, HardDrive, Settings } from "lucide-react";
 import { useTamashiiAuth } from "@/hooks/useTamashiiAuth";
 import { apiFetch } from "@/lib/api";
 import { useGatewayChat } from "@/hooks/useGatewayChat";
 import { ChatMessage } from "@/components/dashboard/ChatMessage";
 import { WorkspacePanel } from "@/components/dashboard/WorkspacePanel";
 import { ConfigPanel } from "@/components/dashboard/ConfigPanel";
+import { S3FilesPanel } from "@/components/dashboard/S3FilesPanel";
 
 interface Agent {
   id: string;
@@ -19,11 +20,12 @@ interface Agent {
   gatewayToken?: string | null;
 }
 
-type Tab = "chat" | "workspace" | "config";
+type Tab = "chat" | "workspace" | "files" | "config";
 
 const TABS: { key: Tab; label: string; icon: typeof MessageSquare }[] = [
   { key: "chat", label: "Chat", icon: MessageSquare },
-  { key: "workspace", label: "Files", icon: FolderOpen },
+  { key: "workspace", label: "Workspace", icon: FolderOpen },
+  { key: "files", label: "Files", icon: HardDrive },
   { key: "config", label: "Config", icon: Settings },
 ];
 
@@ -152,6 +154,13 @@ export default function AgentConsolePage() {
                 {messages.map((msg, i) => (
                   <ChatMessage key={i} {...msg} />
                 ))}
+                {sending && (
+                  <div className="flex justify-start mb-3">
+                    <div className="bg-surface-low rounded-lg px-4 py-2.5 border border-border">
+                      <Loader2 className="w-4 h-4 animate-spin text-text-muted" />
+                    </div>
+                  </div>
+                )}
                 <div ref={messagesEndRef} />
               </>
             )}
@@ -186,6 +195,16 @@ export default function AgentConsolePage() {
             connected={connected}
             openFile={openFile}
             saveFile={saveFile}
+          />
+        </div>
+      )}
+
+      {tab === "files" && (
+        <div className="flex-1 overflow-hidden glass-card">
+          <S3FilesPanel
+            agentId={agentId}
+            getToken={getToken}
+            active={tab === "files"}
           />
         </div>
       )}

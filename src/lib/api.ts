@@ -107,6 +107,46 @@ export async function apiFetch<T>(
   return data;
 }
 
+/** Fetch raw binary data (e.g. file download). */
+export async function apiFetchRaw(
+  endpoint: string,
+  token: string,
+): Promise<globalThis.Response> {
+  const url = `${API_BASE}${endpoint}`;
+  console.log(`[api] GET ${endpoint} (raw)`);
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`API error: ${response.status} - ${errorText}`);
+  }
+  return response;
+}
+
+/** Upload raw binary data (e.g. file upload). */
+export async function apiUploadRaw(
+  endpoint: string,
+  token: string,
+  body: ArrayBuffer,
+): Promise<unknown> {
+  const url = `${API_BASE}${endpoint}`;
+  console.log(`[api] PUT ${endpoint} (raw upload)`);
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/octet-stream",
+    },
+    body,
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`API error: ${response.status} - ${errorText}`);
+  }
+  return response.json();
+}
+
 /** Check the user's subscription status (stored in backend DB). */
 export async function getSubscriptionStatus(token: string): Promise<{
   active: boolean;

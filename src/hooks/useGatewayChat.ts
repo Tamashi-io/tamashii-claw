@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GatewayClient } from "@/gateway-client";
-import { apiFetch, API_BASE } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -165,16 +165,36 @@ export function useGatewayChat(
   const [gwAgentId, setGwAgentId] = useState("main");
 
   const connectGateway = useCallback(async () => {
-    if (!agent || agent.state !== "RUNNING" || !agent.hostname) return;
+    if (!agent || agent.state !== "RUNNING") return;
+
+    // Need either openclaw_url or hostname to build the gateway URL
+    const ocUrl = agent.openclaw_url;
+    const gwBase = ocUrl
+      ? (ocUrl.startsWith("wss://") || ocUrl.startsWith("ws://") ? ocUrl : `wss://${ocUrl}`)
+      : agent.hostname
+        ? `wss://openclaw-${agent.hostname}`
+        : null;
+    if (!gwBase) return;
 
     try {
       const authToken = await getToken();
 
-      // Connect via our backend WebSocket proxy which adds the Authorization
-      // header that Traefik ForwardAuth requires (browsers can't set headers
-      // on cross-domain WebSocket connections).
-      const wsBase = API_BASE.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
-      const url = `${wsBase}/ws/agents/${agent.id}/gateway?token=${encodeURIComponent(authToken)}`;
+      // Fetch HyperClaw JWT for gateway proxy auth (passed as query param)
+      let hyperclawJwt: string | undefined;
+      try {
+        const tokenResp = await apiFetch<{ token?: string; jwt_token?: string }>(
+          `/agents/${agent.id}/token`,
+          authToken
+        );
+        hyperclawJwt = tokenResp.token ?? tokenResp.jwt_token ?? undefined;
+      } catch {
+        // Fall back to connecting without JWT
+      }
+
+      // Build direct WebSocket URL to gateway
+      const url = hyperclawJwt
+        ? `${gwBase}?token=${encodeURIComponent(hyperclawJwt)}`
+        : gwBase;
 
       // Resolve gateway token for OpenClaw handshake: agent field → localStorage → env
       let gatewayToken =
@@ -192,7 +212,7 @@ export function useGatewayChat(
         }
       }
 
-      console.log("[gateway] Connecting via proxy:", { url: url.split("?")[0], hasGatewayToken: !!gatewayToken });
+      console.log("[gateway] Connecting directly:", { url: url.split("?")[0], hasJwt: !!hyperclawJwt, hasGatewayToken: !!gatewayToken });
 
       const gw = new GatewayClient({ url, gatewayToken });
 
