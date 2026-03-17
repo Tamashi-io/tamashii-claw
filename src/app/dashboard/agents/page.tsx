@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Play, Square, Trash2, X, Cpu, HardDrive } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Plus, Play, Square, Trash2, X, Cpu, HardDrive, Terminal } from "lucide-react";
 import { useTamashiiAuth } from "@/hooks/useTamashiiAuth";
 import { apiFetch } from "@/lib/api";
 import { agentAvatar } from "@/lib/avatar";
@@ -36,6 +37,7 @@ const SIZE_PRESETS = [
 
 export default function AgentsPage() {
   const { getToken } = useTamashiiAuth();
+  const router = useRouter();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [budget, setBudget] = useState<AgentBudget | null>(null);
   const [currentPlanId, setCurrentPlanId] = useState<string | null>(null);
@@ -355,7 +357,10 @@ export default function AgentsPage() {
 
             return (
               <div key={agent.id} className="glass-card p-5">
-                <div className="flex items-center gap-3 mb-3">
+                <div
+                  className="flex items-center gap-3 mb-3 cursor-pointer"
+                  onClick={() => isRunning && router.push(`/dashboard/agents/${agent.id}/console`)}
+                >
                   <div
                     className="w-10 h-10 rounded-lg flex items-center justify-center"
                     style={{ backgroundColor: avatar.bgColor }}
@@ -363,7 +368,7 @@ export default function AgentsPage() {
                     <Icon className="w-5 h-5" style={{ color: avatar.fgColor }} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-sm font-semibold text-foreground truncate">{agent.name}</h3>
+                    <h3 className="text-sm font-semibold text-foreground truncate hover:text-primary transition-colors">{agent.name}</h3>
                     <span className={`text-xs font-medium ${stateColor(agent.state)}`}>
                       {agent.state}
                     </span>
@@ -377,6 +382,15 @@ export default function AgentsPage() {
                 )}
 
                 <div className="flex items-center gap-2">
+                  {isRunning && (
+                    <button
+                      onClick={() => router.push(`/dashboard/agents/${agent.id}/console`)}
+                      className="flex-1 btn-primary px-3 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1"
+                    >
+                      <Terminal className="w-3 h-3" />
+                      Console
+                    </button>
+                  )}
                   {isRunning ? (
                     <button
                       onClick={() => stopAgent(agent.id)}
