@@ -168,21 +168,22 @@ export function useGatewayChat(
     if (!agent || agent.state !== "RUNNING") return;
 
     // Resolve gateway URL:
-    // - If openclaw_url has "openclaw-" prefix, use it (proper gateway URL)
-    // - Otherwise derive from hostname using openclaw- prefix convention
-    // - Fall back to backend WebSocket proxy
+    // Per HyperClaw routing: root hostname IS the gateway (wss://{name}.hypercli.com)
+    // Desktop is at https://desktop-{name}.hypercli.com
+    // openclaw_url may also point directly to the gateway
+    // Fall back to backend WebSocket proxy if no hostname available
     const hostname = agent.hostname;
     const ocUrl = agent.openclaw_url;
 
     let gwBase: string | null = null;
     let useProxy = false;
 
-    if (ocUrl && ocUrl.includes("openclaw-")) {
-      // openclaw_url explicitly points to the gateway subdomain
+    if (ocUrl) {
+      // Use openclaw_url directly if provided
       gwBase = ocUrl.startsWith("wss://") || ocUrl.startsWith("ws://") ? ocUrl : `wss://${ocUrl}`;
     } else if (hostname) {
-      // Derive gateway URL: hostname "smith.hyperclaw.app" → "wss://openclaw-smith.hyperclaw.app"
-      gwBase = `wss://openclaw-${hostname}`;
+      // Root hostname is the gateway
+      gwBase = `wss://${hostname}`;
     }
 
     if (!gwBase && !hostname) return;

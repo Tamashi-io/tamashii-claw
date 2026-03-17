@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Bot, Key, CreditCard, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, Bot, Key, CreditCard, Receipt, Settings, LogOut } from "lucide-react";
 import { useTamashiiAuth } from "@/components/TamashiiAuthProvider";
 
 const navItems = [
@@ -9,6 +9,7 @@ const navItems = [
   { label: "Agents", href: "/dashboard/agents", icon: Bot },
   { label: "API Keys", href: "/dashboard/keys", icon: Key },
   { label: "Plans", href: "/dashboard/plans", icon: CreditCard },
+  { label: "Billing", href: "/dashboard/billing", icon: Receipt },
   { label: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 
