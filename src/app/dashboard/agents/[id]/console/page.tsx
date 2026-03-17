@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
-import { Send, ArrowLeft, Loader2 } from "lucide-react";
+import { Send, ArrowLeft, Loader2, MessageSquare, FolderOpen, Settings } from "lucide-react";
 import { useTamashiiAuth } from "@/hooks/useTamashiiAuth";
 import { apiFetch } from "@/lib/api";
 import { useGatewayChat } from "@/hooks/useGatewayChat";
 import { ChatMessage } from "@/components/dashboard/ChatMessage";
+import { WorkspacePanel } from "@/components/dashboard/WorkspacePanel";
+import { ConfigPanel } from "@/components/dashboard/ConfigPanel";
 
 interface Agent {
   id: string;
@@ -17,11 +19,20 @@ interface Agent {
   gatewayToken?: string | null;
 }
 
+type Tab = "chat" | "workspace" | "config";
+
+const TABS: { key: Tab; label: string; icon: typeof MessageSquare }[] = [
+  { key: "chat", label: "Chat", icon: MessageSquare },
+  { key: "workspace", label: "Files", icon: FolderOpen },
+  { key: "config", label: "Config", icon: Settings },
+];
+
 export default function AgentConsolePage() {
   const params = useParams();
   const agentId = params.id as string;
   const { getToken } = useTamashiiAuth();
   const [agent, setAgent] = useState<Agent | null>(null);
+  const [tab, setTab] = useState<Tab>("chat");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Poll agent state until RUNNING so the WebSocket can connect
@@ -61,11 +72,19 @@ export default function AgentConsolePage() {
     sending,
     connected,
     error,
+    files,
+    config,
+    configSchema,
+    openFile,
+    saveFile,
+    saveConfig,
   } = useGatewayChat(agent, getToken);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (tab === "chat") {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, tab]);
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
@@ -74,7 +93,7 @@ export default function AgentConsolePage() {
         <a href="/dashboard/agents" className="text-text-muted hover:text-foreground transition-colors">
           <ArrowLeft className="w-5 h-5" />
         </a>
-        <div>
+        <div className="flex-1 min-w-0">
           <h1 className="text-lg font-bold text-foreground">{agent?.name ?? "Agent Console"}</h1>
           <div className="flex items-center gap-2 text-xs">
             {agent?.state === "PENDING" || agent?.state === "STARTING" ? (
@@ -87,55 +106,100 @@ export default function AgentConsolePage() {
                 {connected ? "Connected" : "Disconnected"}
               </span>
             )}
-            {error && <span className="text-destructive">{error}</span>}
+            {error && <span className="text-destructive truncate">{error}</span>}
           </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex items-center gap-1 bg-surface-low rounded-lg p-0.5 border border-border">
+          {TABS.map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                tab === key
+                  ? "bg-primary text-primary-foreground"
+                  : "text-text-muted hover:text-foreground"
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{label}</span>
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto glass-card p-4 mb-4">
-        {messages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-text-muted text-sm gap-2">
-            {agent?.state === "PENDING" || agent?.state === "STARTING" ? (
-              <>
-                <Loader2 className="w-6 h-6 animate-spin text-primary" />
-                <span>Waiting for agent to start…</span>
-              </>
-            ) : connected ? (
-              "Send a message to start chatting"
+      {/* Tab content */}
+      {tab === "chat" && (
+        <>
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto glass-card p-4 mb-4">
+            {messages.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-text-muted text-sm gap-2">
+                {agent?.state === "PENDING" || agent?.state === "STARTING" ? (
+                  <>
+                    <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                    <span>Waiting for agent to start…</span>
+                  </>
+                ) : connected ? (
+                  "Send a message to start chatting"
+                ) : (
+                  "Connecting to agent..."
+                )}
+              </div>
             ) : (
-              "Connecting to agent..."
+              <>
+                {messages.map((msg, i) => (
+                  <ChatMessage key={i} {...msg} />
+                ))}
+                <div ref={messagesEndRef} />
+              </>
             )}
           </div>
-        ) : (
-          <>
-            {messages.map((msg, i) => (
-              <ChatMessage key={i} {...msg} />
-            ))}
-            <div ref={messagesEndRef} />
-          </>
-        )}
-      </div>
 
-      {/* Input */}
-      <div className="flex gap-3">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-          placeholder={connected ? "Type a message..." : "Waiting for connection..."}
-          disabled={!connected || sending}
-          className="flex-1 px-4 py-3 rounded-lg bg-input-background border border-border text-foreground text-sm placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-        />
-        <button
-          onClick={sendMessage}
-          disabled={!connected || sending || !input.trim()}
-          className="btn-primary px-4 py-3 rounded-lg disabled:opacity-50"
-        >
-          <Send className="w-5 h-5" />
-        </button>
-      </div>
+          {/* Input */}
+          <div className="flex gap-3">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+              placeholder={connected ? "Type a message..." : "Waiting for connection..."}
+              disabled={!connected || sending}
+              className="flex-1 px-4 py-3 rounded-lg bg-input-background border border-border text-foreground text-sm placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+            />
+            <button
+              onClick={sendMessage}
+              disabled={!connected || sending || !input.trim()}
+              className="btn-primary px-4 py-3 rounded-lg disabled:opacity-50"
+            >
+              <Send className="w-5 h-5" />
+            </button>
+          </div>
+        </>
+      )}
+
+      {tab === "workspace" && (
+        <div className="flex-1 overflow-hidden glass-card">
+          <WorkspacePanel
+            files={files}
+            connected={connected}
+            openFile={openFile}
+            saveFile={saveFile}
+          />
+        </div>
+      )}
+
+      {tab === "config" && (
+        <div className="flex-1 overflow-hidden glass-card">
+          <ConfigPanel
+            config={config}
+            configSchema={configSchema}
+            connected={connected}
+            saveConfig={saveConfig}
+          />
+        </div>
+      )}
     </div>
   );
 }
