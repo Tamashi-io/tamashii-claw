@@ -35,10 +35,17 @@ export default function DashboardPage() {
     const load = async () => {
       try {
         const token = await getToken();
+        console.log("[dashboard] Loading dashboard data (auth token present)");
         const dashboard = await apiFetch<DashboardData>("/dashboard", token);
+        console.log("[dashboard] Data loaded:", {
+          agents: dashboard.agents?.length ?? 0,
+          keys: dashboard.keys?.length ?? 0,
+          totalTokens: dashboard.stats?.total_tokens ?? 0,
+          totalRequests: dashboard.stats?.total_requests ?? 0,
+        });
         setData(dashboard);
-      } catch {
-        // Dashboard data not available yet
+      } catch (err) {
+        console.error("[dashboard] Failed to load:", err);
       } finally {
         setLoading(false);
       }

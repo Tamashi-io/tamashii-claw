@@ -501,6 +501,7 @@ export async function swapAndSubscribe(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
+  console.log("[swap] Calling swap-subscribe endpoint:", { planId, txHash });
   const res = await fetch(`${API_BASE}/x402/swap-subscribe`, {
     method: "POST",
     headers,
@@ -509,9 +510,19 @@ export async function swapAndSubscribe(
 
   if (!res.ok) {
     const err = await res.text();
+    console.error("[swap] swap-subscribe failed:", res.status, err.substring(0, 300));
     throw new Error(`Subscription failed: ${err}`);
   }
 
+  const result = await res.json();
+  console.log("[swap] swap-subscribe result:", {
+    ok: result.ok,
+    plan_id: result.plan_id,
+    amount_paid: result.amount_paid,
+    duration_days: result.duration_days,
+    hasKey: !!result.key,
+  });
+
   onStep?.("done");
-  return res.json();
+  return result;
 }

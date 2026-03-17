@@ -27,10 +27,12 @@ export default function KeysPage() {
   const loadKeys = async () => {
     try {
       const token = await getToken();
+      console.log("[keys] Loading API keys (auth token present)");
       const data = await apiFetch<{ keys: ApiKey[] }>("/keys", token);
+      console.log("[keys] Loaded:", { count: data.keys?.length ?? 0 });
       setKeys(data.keys ?? []);
-    } catch {
-      // Keys not available
+    } catch (err) {
+      console.error("[keys] Failed to load:", err);
     } finally {
       setLoading(false);
     }

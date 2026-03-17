@@ -4,11 +4,10 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, CreditCard, Coins, Wallet, Check, Loader2 } from "lucide-react";
 import { Plan, formatTokens } from "@/lib/format";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, getSubscriptionStatus } from "@/lib/api";
 import {
   connectWallet,
   getWalletState,
-  x402Subscribe,
   swapAndSubscribe,
   type NetworkId,
   type SwapStep,
@@ -107,13 +106,42 @@ export function PlanCheckoutModal({
     }
   };
 
-  /* ── x402 USDC on Base (direct) ───────────────────────────────────── */
+  /* ── USDC on Base (server-side subscribe — operator wallet pays) ── */
   const handleCryptoBase = async () => {
     setProcessing(true);
     setError(null);
     try {
       const token = await getToken();
-      await x402Subscribe(plan.id, token || undefined);
+      console.log("[checkout] Starting server-side subscribe for plan:", plan.id);
+
+      // Use server-side subscribe endpoint (operator wallet signs x402 payment)
+      // This stores the subscription in the DB linked to the authenticated user
+      const result = await apiFetch<{
+        ok?: boolean;
+        key?: string;
+        plan_id?: string;
+        amount_paid?: string;
+        duration_days?: number;
+      }>(`/x402/subscribe/${plan.id}`, token, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      console.log("[checkout] Subscribe result:", {
+        ok: result.ok,
+        plan_id: result.plan_id,
+        amount_paid: result.amount_paid,
+        duration_days: result.duration_days,
+        hasKey: !!result.key,
+      });
+
+      // Verify subscription was stored in DB
+      try {
+        const sub = await getSubscriptionStatus(token);
+        console.log("[checkout] Subscription status from DB:", sub);
+      } catch (err) {
+        console.warn("[checkout] Could not verify subscription status:", err);
+      }
+
       setSuccess(true);
       setTimeout(() => {
         handleClose();
@@ -121,18 +149,11 @@ export function PlanCheckoutModal({
       }, 2000);
     } catch (err: unknown) {
       let msg = "Payment failed. Please try again.";
-      const axiosErr = err as {
-        response?: { data?: { detail?: unknown } };
-        message?: string;
-      };
-      if (axiosErr.response?.data?.detail) {
-        msg =
-          typeof axiosErr.response.data.detail === "string"
-            ? axiosErr.response.data.detail
-            : JSON.stringify(axiosErr.response.data.detail);
-      } else if (axiosErr.message) {
-        msg = axiosErr.message;
+      const errObj = err as { message?: string };
+      if (errObj.message) {
+        msg = errObj.message;
       }
+      console.error("[checkout] Subscribe failed:", msg);
       setError(msg);
     } finally {
       setProcessing(false);
@@ -146,15 +167,27 @@ export function PlanCheckoutModal({
     setSwapStep("quoting");
     try {
       const token = await getToken();
-      await swapAndSubscribe(
+      console.log("[checkout] Starting BNB swap-subscribe for plan:", plan.id, "amount:", plan.price);
+      const result = await swapAndSubscribe(
         plan.id,
         plan.price,
         token || undefined,
         (step) => {
+          console.log("[checkout] Swap step:", step);
           setSwapStep(step);
         },
         bnbPayToken,
       );
+      console.log("[checkout] Swap-subscribe result:", result);
+
+      // Verify subscription was stored in DB
+      try {
+        const sub = await getSubscriptionStatus(token);
+        console.log("[checkout] Subscription status from DB:", sub);
+      } catch (err) {
+        console.warn("[checkout] Could not verify subscription status:", err);
+      }
+
       setSuccess(true);
       setTimeout(() => {
         handleClose();
@@ -162,7 +195,9 @@ export function PlanCheckoutModal({
       }, 2000);
     } catch (err: unknown) {
       setSwapStep("error");
-      setError(err instanceof Error ? err.message : "Swap failed");
+      const msg = err instanceof Error ? err.message : "Swap failed";
+      console.error("[checkout] Swap-subscribe failed:", msg);
+      setError(msg);
     } finally {
       setProcessing(false);
     }

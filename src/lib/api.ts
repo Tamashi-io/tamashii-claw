@@ -55,6 +55,7 @@ export async function exchangeToken(privyToken: string): Promise<string> {
 
   const data: { app_token: string; user_id: string; team_id: string } =
     await response.json();
+  console.log("[auth] Token exchange success — user_id:", data.user_id);
   setStoredToken(data.app_token);
   return data.app_token;
 }
@@ -90,12 +91,31 @@ export async function apiFetch<T>(
   }
 
   const url = `${API_BASE}${endpoint}`;
+  const method = options?.method || "GET";
+  console.log(`[api] ${method} ${endpoint}`);
+
   const response = await fetch(url, { ...options, headers });
 
   if (!response.ok) {
     const errorText = await response.text();
+    console.error(`[api] ${method} ${endpoint} → ${response.status}:`, errorText.substring(0, 300));
     throw new Error(`API error: ${response.status} - ${errorText}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  console.log(`[api] ${method} ${endpoint} → ${response.status} OK`, typeof data === "object" ? Object.keys(data) : data);
+  return data;
+}
+
+/** Check the user's subscription status (stored in backend DB). */
+export async function getSubscriptionStatus(token: string): Promise<{
+  active: boolean;
+  planId?: string;
+  amountPaid?: string;
+  durationDays?: number;
+  expiresAt?: string;
+  txHash?: string;
+  createdAt?: string;
+}> {
+  return apiFetch("/subscription", token);
 }

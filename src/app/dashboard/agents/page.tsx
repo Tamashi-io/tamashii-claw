@@ -52,15 +52,21 @@ export default function AgentsPage() {
   const loadAgents = async () => {
     try {
       const token = await getToken();
+      console.log("[agents] Loading agents list (auth token present)");
       const [agentsData, planData] = await Promise.all([
         apiFetch<{ items: Agent[]; budget?: AgentBudget }>("/agents", token),
         apiFetch<{ id?: string; plan_id?: string }>("/plans/current", token).catch(() => null),
       ]);
+      console.log("[agents] Loaded:", {
+        count: agentsData.items?.length ?? 0,
+        budget: agentsData.budget,
+        planId: planData?.id ?? planData?.plan_id ?? null,
+      });
       setAgents(agentsData.items ?? []);
       if (agentsData.budget) setBudget(agentsData.budget);
       if (planData) setCurrentPlanId(planData.id ?? planData.plan_id ?? null);
-    } catch {
-      // Agents not available
+    } catch (err) {
+      console.error("[agents] Failed to load:", err);
     } finally {
       setLoading(false);
     }
