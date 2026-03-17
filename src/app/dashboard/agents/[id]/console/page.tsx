@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
-import { Send, ArrowLeft } from "lucide-react";
+import { Send, ArrowLeft, Loader2 } from "lucide-react";
 import { useTamashiiAuth } from "@/hooks/useTamashiiAuth";
 import { apiFetch } from "@/lib/api";
 import { useGatewayChat } from "@/hooks/useGatewayChat";
@@ -23,17 +23,32 @@ export default function AgentConsolePage() {
   const [agent, setAgent] = useState<Agent | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Poll agent state until RUNNING so the WebSocket can connect
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
+
     const load = async () => {
       try {
         const token = await getToken();
         const data = await apiFetch<Agent>(`/agents/${agentId}`, token);
-        setAgent(data);
+        if (!cancelled) {
+          setAgent(data);
+          // Keep polling while agent is starting up
+          if (data.state === "PENDING" || data.state === "STARTING") {
+            timer = setTimeout(load, 3000);
+          }
+        }
       } catch {
         // Agent not found
       }
     };
     load();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [agentId, getToken]);
 
   const {
@@ -60,9 +75,16 @@ export default function AgentConsolePage() {
         <div>
           <h1 className="text-lg font-bold text-foreground">{agent?.name ?? "Agent Console"}</h1>
           <div className="flex items-center gap-2 text-xs">
-            <span className={connected ? "text-green-400" : "text-text-muted"}>
-              {connected ? "Connected" : "Disconnected"}
-            </span>
+            {agent?.state === "PENDING" || agent?.state === "STARTING" ? (
+              <span className="text-yellow-400 flex items-center gap-1">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Agent {agent.state.toLowerCase()}…
+              </span>
+            ) : (
+              <span className={connected ? "text-green-400" : "text-text-muted"}>
+                {connected ? "Connected" : "Disconnected"}
+              </span>
+            )}
             {error && <span className="text-destructive">{error}</span>}
           </div>
         </div>
@@ -71,8 +93,17 @@ export default function AgentConsolePage() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto glass-card p-4 mb-4">
         {messages.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-text-muted text-sm">
-            {connected ? "Send a message to start chatting" : "Connecting to agent..."}
+          <div className="h-full flex flex-col items-center justify-center text-text-muted text-sm gap-2">
+            {agent?.state === "PENDING" || agent?.state === "STARTING" ? (
+              <>
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                <span>Waiting for agent to start…</span>
+              </>
+            ) : connected ? (
+              "Send a message to start chatting"
+            ) : (
+              "Connecting to agent..."
+            )}
           </div>
         ) : (
           <>

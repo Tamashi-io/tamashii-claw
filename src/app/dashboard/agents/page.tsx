@@ -22,6 +22,12 @@ interface Agent {
   memory?: number;
 }
 
+interface SizePreset {
+  label: string;
+  cpu: number;
+  memory: number;
+}
+
 interface AgentBudget {
   max_agents: number;
   total_cpu: number;
@@ -29,20 +35,39 @@ interface AgentBudget {
   used_agents: number;
   used_cpu: number;
   used_memory: number;
+  size_presets?: Record<string, { cpu: number; memory: number }>;
 }
 
-// HyperClaw API expects cpu and memory as integers (CPU cores, GB)
-const SIZE_PRESETS = [
+// Fallback if HyperClaw doesn't return size_presets
+const DEFAULT_SIZE_PRESETS: SizePreset[] = [
   { label: "Small", cpu: 1, memory: 1 },
   { label: "Medium", cpu: 1, memory: 2 },
   { label: "Large", cpu: 2, memory: 2 },
 ];
+
+function buildSizePresets(raw?: Record<string, { cpu: number; memory: number }>): SizePreset[] {
+  if (!raw || Object.keys(raw).length === 0) return DEFAULT_SIZE_PRESETS;
+  // Convert { small: {cpu,memory}, medium: ... } → sorted SizePreset[]
+  const order = ["small", "medium", "large", "xlarge"];
+  return Object.entries(raw)
+    .sort(([a], [b]) => {
+      const ai = order.indexOf(a);
+      const bi = order.indexOf(b);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    })
+    .map(([key, val]) => ({
+      label: key.charAt(0).toUpperCase() + key.slice(1),
+      cpu: val.cpu,
+      memory: val.memory,
+    }));
+}
 
 export default function AgentsPage() {
   const { getToken } = useTamashiiAuth();
   const router = useRouter();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [budget, setBudget] = useState<AgentBudget | null>(null);
+  const [sizePresets, setSizePresets] = useState<SizePreset[]>(DEFAULT_SIZE_PRESETS);
   const [currentPlanId, setCurrentPlanId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<Agent | null>(null);
@@ -72,7 +97,10 @@ export default function AgentsPage() {
         planAgents: (planData as Record<string, unknown>)?.agents,
       });
       setAgents(agentsData.items ?? []);
-      if (agentsData.budget) setBudget(agentsData.budget);
+      if (agentsData.budget) {
+        setBudget(agentsData.budget);
+        setSizePresets(buildSizePresets(agentsData.budget.size_presets));
+      }
       if (planData) {
         const pid = planData.id ?? planData.plan_id ?? null;
         setCurrentPlanId(pid);
@@ -107,14 +135,14 @@ export default function AgentsPage() {
         };
       }
 
-      const selectedPreset = SIZE_PRESETS[preset];
+      const selectedPreset = sizePresets[preset];
       const remainingCpu = budget.total_cpu - budget.used_cpu;
       const remainingMemory = budget.total_memory - budget.used_memory;
 
       if (selectedPreset.cpu > remainingCpu || selectedPreset.memory > remainingMemory) {
         return {
           allowed: false,
-          reason: `Not enough resources for this agent size. Available: ${remainingCpu}m CPU, ${remainingMemory}Mi memory. Upgrade your plan for more capacity.`,
+          reason: `Not enough resources for this agent size. Available: ${remainingCpu} CPU, ${remainingMemory} GB memory. Upgrade your plan for more capacity.`,
         };
       }
 
@@ -159,7 +187,7 @@ export default function AgentsPage() {
     setCreateError(null);
     try {
       const token = await getToken();
-      const { cpu, memory } = SIZE_PRESETS[preset];
+      const { cpu, memory } = sizePresets[preset];
       await apiFetch("/agents", token, {
         method: "POST",
         body: JSON.stringify({
@@ -171,7 +199,7 @@ export default function AgentsPage() {
       });
       setShowCreate(false);
       setNewName("");
-      setPreset(1);
+      setPreset(0);
       setCreateError(null);
       await loadAgents();
     } catch (err) {
@@ -277,8 +305,8 @@ export default function AgentsPage() {
 
               <div>
                 <label className="block text-sm text-text-secondary mb-1.5">Size</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {SIZE_PRESETS.map((p, i) => {
+                <div className={`grid gap-2 ${sizePresets.length <= 3 ? "grid-cols-3" : "grid-cols-2 sm:grid-cols-4"}`}>
+                  {sizePresets.map((p, i) => {
                     const insufficientCpu = budget ? p.cpu > (budget.total_cpu - budget.used_cpu) : false;
                     const insufficientMem = budget ? p.memory > (budget.total_memory - budget.used_memory) : false;
                     const disabled = insufficientCpu || insufficientMem;
@@ -307,7 +335,7 @@ export default function AgentsPage() {
                     );
                   })}
                 </div>
-                {budget && budget.total_cpu - budget.used_cpu < SIZE_PRESETS[0].cpu && (
+                {budget && budget.total_cpu - budget.used_cpu < sizePresets[0].cpu && (
                   <p className="text-xs text-warning mt-2">
                     Insufficient resources.{" "}
                     <button
