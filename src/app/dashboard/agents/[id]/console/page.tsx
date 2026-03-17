@@ -32,6 +32,7 @@ export default function AgentConsolePage() {
       try {
         const token = await getToken();
         const data = await apiFetch<Agent>(`/agents/${agentId}`, token);
+        console.log("[console] Agent data:", JSON.stringify(data, null, 2));
         if (!cancelled) {
           setAgent(data);
           // Keep polling while agent is starting up

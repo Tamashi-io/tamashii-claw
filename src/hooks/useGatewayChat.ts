@@ -142,6 +142,13 @@ export function useGatewayChat(
     if (!agent || agent.state !== "RUNNING" || !agent.hostname) return;
 
     const url = agent.openclaw_url || `wss://openclaw-${agent.hostname}`;
+    console.log("[gateway] Agent data:", {
+      id: agent.id,
+      state: agent.state,
+      hostname: agent.hostname,
+      openclaw_url: agent.openclaw_url,
+      computed_url: url,
+    });
     if (!url) {
       setError("No gateway URL available");
       return;
@@ -296,7 +303,9 @@ export function useGatewayChat(
       setConfig(cfg);
       setConfigSchema(schema);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[gateway] Connection failed:", msg, e);
+      setError(msg);
     }
   }, [agent, getToken]);
 
