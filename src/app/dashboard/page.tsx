@@ -31,8 +31,18 @@ interface PlanInfo {
   id?: string;
   plan_id?: string;
   name?: string;
+  price?: number;
+  aiu?: number;
   provider?: string;
+  features?: string[];
   expires_at?: string | null;
+  seconds_remaining?: number;
+  limits?: {
+    tpd: number;
+    tpm: number;
+    burst_tpm: number;
+    rpm: number;
+  };
   [k: string]: unknown;
 }
 
@@ -54,8 +64,10 @@ interface DashboardData {
     active_keys: number;
     rate_limit_tpm: number;
     rate_limit_rpm: number;
+    current_tpm?: number;
+    current_rpm?: number;
   };
-  usage: Array<{ date: string; prompt_tokens: number; completion_tokens: number }>;
+  usage: Array<{ date: string; prompt_tokens: number; completion_tokens: number; total_tokens?: number; requests?: number }>;
   key_usage: Array<{ key_id: string; name: string; tokens: number; requests: number }>;
   plan: PlanInfo | null;
   budget: BudgetInfo | null;
@@ -89,6 +101,13 @@ export default function DashboardPage() {
     try {
       const token = await getToken();
       const dashboard = await apiFetch<DashboardData>("/dashboard", token);
+      console.log("[dashboard] data:", JSON.stringify({
+        stats: dashboard.stats,
+        plan: dashboard.plan ? { name: dashboard.plan.name, id: dashboard.plan.id } : null,
+        agents: dashboard.agents?.length ?? 0,
+        usage: dashboard.usage?.length ?? 0,
+        key_usage: dashboard.key_usage?.length ?? 0,
+      }));
       setData(dashboard);
     } catch (err) {
       console.error("[dashboard] Failed to load:", err);
