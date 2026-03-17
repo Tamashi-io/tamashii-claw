@@ -24,6 +24,32 @@ interface Agent {
   state: string;
   hostname: string | null;
   openclaw_url?: string | null;
+  gatewayToken?: string | null;
+}
+
+// localStorage cache for gateway tokens (matches HyperClaw's agent-store pattern)
+const GW_TOKEN_KEY = "tamashiiclaw:gw-tokens";
+
+function getStoredGatewayToken(agentId: string): string | null {
+  try {
+    const raw = localStorage.getItem(GW_TOKEN_KEY);
+    if (!raw) return null;
+    const map = JSON.parse(raw);
+    return map[agentId] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function storeGatewayToken(agentId: string, token: string): void {
+  try {
+    const raw = localStorage.getItem(GW_TOKEN_KEY);
+    const map = raw ? JSON.parse(raw) : {};
+    map[agentId] = token;
+    localStorage.setItem(GW_TOKEN_KEY, JSON.stringify(map));
+  } catch {
+    // Ignore storage errors
+  }
 }
 
 function normalizeHistoryMessage(message: unknown): ChatMessage | null {
@@ -156,29 +182,42 @@ export function useGatewayChat(
 
     try {
       const authToken = await getToken();
-      const tokenResp = await apiFetch<{ token: string }>(
-        `/agents/${agent.id}/token`,
-        authToken
-      );
 
-      const cookieDomain = "";
-      const subdomain = agent.hostname.split(".")[0];
-      const tokenValue = encodeURIComponent(tokenResp.token);
-      const securePart = window.location.protocol === "https:" ? "; secure" : "";
-      const domainPart = cookieDomain ? `; domain=${cookieDomain}` : "";
-      const expires = new Date(Date.now() + 12 * 60 * 60 * 1000).toUTCString();
-
-      const cookieNames = [
-        `${subdomain}-token`,
-        `shell-${subdomain}-token`,
-        `openclaw-${subdomain}-token`,
-        "reef_token",
-      ];
-      for (const name of cookieNames) {
-        document.cookie = `${name}=${tokenValue}; expires=${expires}; path=/${domainPart}${securePart}; samesite=lax`;
+      // Resolve gateway token: agent field → localStorage → deployment env
+      let gatewayToken =
+        agent.gatewayToken ?? getStoredGatewayToken(agent.id) ?? undefined;
+      if (!gatewayToken) {
+        try {
+          const envResp = await apiFetch<{ env: Record<string, string> }>(
+            `/agents/${agent.id}/env`,
+            authToken
+          );
+          gatewayToken = envResp.env?.OPENCLAW_GATEWAY_TOKEN ?? undefined;
+          if (gatewayToken) storeGatewayToken(agent.id, gatewayToken);
+        } catch {
+          // Fall back to token endpoint if env not available
+          try {
+            const tokenResp = await apiFetch<{ token: string }>(
+              `/agents/${agent.id}/token`,
+              authToken
+            );
+            gatewayToken = tokenResp.token;
+          } catch {
+            // Continue without token, handshake may still work
+          }
+        }
       }
 
-      const gw = new GatewayClient({ url, gatewayToken: tokenResp.token });
+      console.log("[gateway] Token resolved:", {
+        source: agent.gatewayToken
+          ? "agent"
+          : getStoredGatewayToken(agent.id)
+            ? "localStorage"
+            : "env/token",
+        hasToken: !!gatewayToken,
+      });
+
+      const gw = new GatewayClient({ url, gatewayToken });
 
       gw.onEvent((event, payload) => {
         if (event === "chat") {

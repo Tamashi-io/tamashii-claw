@@ -14,6 +14,7 @@ interface Agent {
   state: string;
   hostname: string | null;
   openclaw_url?: string | null;
+  gatewayToken?: string | null;
 }
 
 export default function AgentConsolePage() {
