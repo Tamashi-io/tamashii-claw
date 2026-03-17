@@ -171,7 +171,7 @@ export function useGatewayChat(
         document.cookie = `${name}=${tokenValue}; expires=${expires}; path=/${domainPart}${securePart}; samesite=lax`;
       }
 
-      const gw = new GatewayClient({ url });
+      const gw = new GatewayClient({ url, gatewayToken: tokenResp.token });
 
       gw.onEvent((event, payload) => {
         if (event === "chat") {
