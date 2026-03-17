@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GatewayClient } from "@/gateway-client";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, API_BASE } from "@/lib/api";
 
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -167,23 +167,16 @@ export function useGatewayChat(
   const connectGateway = useCallback(async () => {
     if (!agent || agent.state !== "RUNNING" || !agent.hostname) return;
 
-    const url = agent.openclaw_url || `wss://openclaw-${agent.hostname}`;
-    console.log("[gateway] Agent data:", {
-      id: agent.id,
-      state: agent.state,
-      hostname: agent.hostname,
-      openclaw_url: agent.openclaw_url,
-      computed_url: url,
-    });
-    if (!url) {
-      setError("No gateway URL available");
-      return;
-    }
-
     try {
       const authToken = await getToken();
 
-      // Resolve gateway token for handshake: agent field → localStorage → env
+      // Connect via our backend WebSocket proxy which adds the Authorization
+      // header that Traefik ForwardAuth requires (browsers can't set headers
+      // on cross-domain WebSocket connections).
+      const wsBase = API_BASE.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
+      const url = `${wsBase}/ws/agents/${agent.id}/gateway?token=${encodeURIComponent(authToken)}`;
+
+      // Resolve gateway token for OpenClaw handshake: agent field → localStorage → env
       let gatewayToken =
         agent.gatewayToken ?? getStoredGatewayToken(agent.id) ?? undefined;
       if (!gatewayToken) {
@@ -199,24 +192,9 @@ export function useGatewayChat(
         }
       }
 
-      // Fetch JWT for Traefik ForwardAuth (passed as ?token= in WebSocket URL)
-      let jwtToken: string | undefined;
-      try {
-        const tokenResp = await apiFetch<{ token: string }>(
-          `/agents/${agent.id}/token`,
-          authToken
-        );
-        jwtToken = tokenResp.token;
-      } catch {
-        // Continue without JWT — will fail if cookies aren't set
-      }
+      console.log("[gateway] Connecting via proxy:", { url: url.split("?")[0], hasGatewayToken: !!gatewayToken });
 
-      console.log("[gateway] Tokens resolved:", {
-        gatewayToken: gatewayToken ? "present" : "default",
-        jwtToken: jwtToken ? "present" : "missing",
-      });
-
-      const gw = new GatewayClient({ url, token: jwtToken, gatewayToken });
+      const gw = new GatewayClient({ url, gatewayToken });
 
       gw.onEvent((event, payload) => {
         if (event === "chat") {
