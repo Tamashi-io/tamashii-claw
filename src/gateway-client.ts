@@ -57,7 +57,11 @@ export class GatewayClient {
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.ws = new WebSocket(this.config.url);
+      // Append JWT token to URL for Traefik ForwardAuth (same as Node.js SDK)
+      const wsUrl = this.config.token
+        ? `${this.config.url}?token=${encodeURIComponent(this.config.token)}`
+        : this.config.url;
+      this.ws = new WebSocket(wsUrl);
 
       let handshakePhase: "challenge" | "hello" | "done" = "challenge";
       const timeout = setTimeout(() => {

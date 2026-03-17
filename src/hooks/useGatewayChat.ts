@@ -183,7 +183,7 @@ export function useGatewayChat(
     try {
       const authToken = await getToken();
 
-      // Resolve gateway token: agent field → localStorage → deployment env
+      // Resolve gateway token for handshake: agent field → localStorage → env
       let gatewayToken =
         agent.gatewayToken ?? getStoredGatewayToken(agent.id) ?? undefined;
       if (!gatewayToken) {
@@ -195,29 +195,28 @@ export function useGatewayChat(
           gatewayToken = envResp.env?.OPENCLAW_GATEWAY_TOKEN ?? undefined;
           if (gatewayToken) storeGatewayToken(agent.id, gatewayToken);
         } catch {
-          // Fall back to token endpoint if env not available
-          try {
-            const tokenResp = await apiFetch<{ token: string }>(
-              `/agents/${agent.id}/token`,
-              authToken
-            );
-            gatewayToken = tokenResp.token;
-          } catch {
-            // Continue without token, handshake may still work
-          }
+          // Non-critical — handshake default will be used
         }
       }
 
-      console.log("[gateway] Token resolved:", {
-        source: agent.gatewayToken
-          ? "agent"
-          : getStoredGatewayToken(agent.id)
-            ? "localStorage"
-            : "env/token",
-        hasToken: !!gatewayToken,
+      // Fetch JWT for Traefik ForwardAuth (passed as ?token= in WebSocket URL)
+      let jwtToken: string | undefined;
+      try {
+        const tokenResp = await apiFetch<{ token: string }>(
+          `/agents/${agent.id}/token`,
+          authToken
+        );
+        jwtToken = tokenResp.token;
+      } catch {
+        // Continue without JWT — will fail if cookies aren't set
+      }
+
+      console.log("[gateway] Tokens resolved:", {
+        gatewayToken: gatewayToken ? "present" : "default",
+        jwtToken: jwtToken ? "present" : "missing",
       });
 
-      const gw = new GatewayClient({ url, gatewayToken });
+      const gw = new GatewayClient({ url, token: jwtToken, gatewayToken });
 
       gw.onEvent((event, payload) => {
         if (event === "chat") {
