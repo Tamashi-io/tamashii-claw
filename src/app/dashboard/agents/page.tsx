@@ -31,11 +31,11 @@ interface AgentBudget {
   used_memory: number;
 }
 
-// HyperClaw API expects cpu as integer (CPU units), memory in MiB
+// HyperClaw API expects cpu and memory as integers (CPU cores, GB)
 const SIZE_PRESETS = [
-  { label: "Small", cpu: 1, memory: 256 },
-  { label: "Medium", cpu: 1, memory: 512 },
-  { label: "Large", cpu: 2, memory: 1024 },
+  { label: "Small", cpu: 1, memory: 1 },
+  { label: "Medium", cpu: 1, memory: 2 },
+  { label: "Large", cpu: 2, memory: 2 },
 ];
 
 export default function AgentsPage() {
@@ -239,7 +239,7 @@ export default function AgentsPage() {
             <p className="text-xs text-text-muted mt-1">
               {budget.used_agents}/{budget.max_agents} agents &middot;{" "}
               {budget.used_cpu}/{budget.total_cpu} CPU &middot;{" "}
-              {budget.used_memory}/{budget.total_memory} Mi memory
+              {budget.used_memory}/{budget.total_memory} GB memory
             </p>
           )}
         </div>
@@ -301,7 +301,7 @@ export default function AgentsPage() {
                           <Cpu className="w-3 h-3" /> {p.cpu} CPU
                         </div>
                         <div className="text-xs text-text-muted flex items-center justify-center gap-1">
-                          <HardDrive className="w-3 h-3" /> {p.memory} Mi
+                          <HardDrive className="w-3 h-3" /> {p.memory} GB
                         </div>
                       </button>
                     );
@@ -394,7 +394,7 @@ export default function AgentsPage() {
 
                 {(agent.cpu_millicores || agent.cpu || agent.memory_mib || agent.memory) && (
                   <p className="text-xs text-text-muted mb-3">
-                    {agent.cpu ?? agent.cpu_millicores} CPU &middot; {agent.memory ?? agent.memory_mib} Mi memory
+                    {agent.cpu ?? agent.cpu_millicores} CPU &middot; {agent.memory ?? agent.memory_mib} GB memory
                   </p>
                 )}
 
