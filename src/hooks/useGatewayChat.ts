@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GatewayClient } from "@/gateway-client";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, API_BASE } from "@/lib/api";
 
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -167,34 +167,52 @@ export function useGatewayChat(
   const connectGateway = useCallback(async () => {
     if (!agent || agent.state !== "RUNNING") return;
 
-    // Need either openclaw_url or hostname to build the gateway URL
+    // Resolve gateway URL:
+    // - If openclaw_url has "openclaw-" prefix, use it (proper gateway URL)
+    // - Otherwise derive from hostname using openclaw- prefix convention
+    // - Fall back to backend WebSocket proxy
+    const hostname = agent.hostname;
     const ocUrl = agent.openclaw_url;
-    const gwBase = ocUrl
-      ? (ocUrl.startsWith("wss://") || ocUrl.startsWith("ws://") ? ocUrl : `wss://${ocUrl}`)
-      : agent.hostname
-        ? `wss://openclaw-${agent.hostname}`
-        : null;
-    if (!gwBase) return;
+
+    let gwBase: string | null = null;
+    let useProxy = false;
+
+    if (ocUrl && ocUrl.includes("openclaw-")) {
+      // openclaw_url explicitly points to the gateway subdomain
+      gwBase = ocUrl.startsWith("wss://") || ocUrl.startsWith("ws://") ? ocUrl : `wss://${ocUrl}`;
+    } else if (hostname) {
+      // Derive gateway URL: hostname "smith.hyperclaw.app" → "wss://openclaw-smith.hyperclaw.app"
+      gwBase = `wss://openclaw-${hostname}`;
+    }
+
+    if (!gwBase && !hostname) return;
 
     try {
       const authToken = await getToken();
 
-      // Fetch HyperClaw JWT for gateway proxy auth (passed as query param)
-      let hyperclawJwt: string | undefined;
-      try {
-        const tokenResp = await apiFetch<{ token?: string; jwt_token?: string }>(
-          `/agents/${agent.id}/token`,
-          authToken
-        );
-        hyperclawJwt = tokenResp.token ?? tokenResp.jwt_token ?? undefined;
-      } catch {
-        // Fall back to connecting without JWT
-      }
+      let url: string;
+      if (gwBase) {
+        // Try direct connection with HyperClaw JWT
+        let hyperclawJwt: string | undefined;
+        try {
+          const tokenResp = await apiFetch<{ token?: string; jwt_token?: string }>(
+            `/agents/${agent.id}/token`,
+            authToken
+          );
+          hyperclawJwt = tokenResp.token ?? tokenResp.jwt_token ?? undefined;
+        } catch {
+          // Fall back to connecting without JWT
+        }
 
-      // Build direct WebSocket URL to gateway
-      const url = hyperclawJwt
-        ? `${gwBase}?token=${encodeURIComponent(hyperclawJwt)}`
-        : gwBase;
+        url = hyperclawJwt
+          ? `${gwBase}?token=${encodeURIComponent(hyperclawJwt)}`
+          : gwBase;
+      } else {
+        // No gateway URL available — use backend proxy
+        useProxy = true;
+        const wsBase = API_BASE.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
+        url = `${wsBase}/ws/agents/${agent.id}/gateway?token=${encodeURIComponent(authToken)}`;
+      }
 
       // Resolve gateway token for OpenClaw handshake: agent field → localStorage → env
       let gatewayToken =
@@ -212,7 +230,7 @@ export function useGatewayChat(
         }
       }
 
-      console.log("[gateway] Connecting directly:", { url: url.split("?")[0], hasJwt: !!hyperclawJwt, hasGatewayToken: !!gatewayToken });
+      console.log("[gateway] Connecting:", { url: url.split("?")[0], mode: useProxy ? "proxy" : "direct", hasGatewayToken: !!gatewayToken });
 
       const gw = new GatewayClient({ url, gatewayToken });
 
