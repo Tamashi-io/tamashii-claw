@@ -51,22 +51,30 @@ export default function AgentsPage() {
   const [newName, setNewName] = useState("");
   const [preset, setPreset] = useState(1); // default Medium
 
+  // Whether the current plan is a paid plan (not "free")
+  const [hasPaidPlan, setHasPaidPlan] = useState(false);
+
   const loadAgents = async () => {
     try {
       const token = await getToken();
       console.log("[agents] Loading agents list (auth token present)");
       const [agentsData, planData] = await Promise.all([
         apiFetch<{ items: Agent[]; budget?: AgentBudget }>("/agents", token),
-        apiFetch<{ id?: string; plan_id?: string }>("/plans/current", token).catch(() => null),
+        apiFetch<{ id?: string; plan_id?: string; agents?: number }>("/plans/current", token).catch(() => null),
       ]);
       console.log("[agents] Loaded:", {
         count: agentsData.items?.length ?? 0,
         budget: agentsData.budget,
         planId: planData?.id ?? planData?.plan_id ?? null,
+        planAgents: (planData as Record<string, unknown>)?.agents,
       });
       setAgents(agentsData.items ?? []);
       if (agentsData.budget) setBudget(agentsData.budget);
-      if (planData) setCurrentPlanId(planData.id ?? planData.plan_id ?? null);
+      if (planData) {
+        const pid = planData.id ?? planData.plan_id ?? null;
+        setCurrentPlanId(pid);
+        setHasPaidPlan(!!pid && pid !== "free");
+      }
     } catch (err) {
       console.error("[agents] Failed to load:", err);
     } finally {
@@ -80,40 +88,46 @@ export default function AgentsPage() {
   }, []);
 
   const canCreateAgent = (): { allowed: boolean; reason: string } => {
-    if (!budget) {
-      // No budget info — plan likely doesn't support agents at all
-      return {
-        allowed: false,
-        reason: "Your current plan does not include agent hosting. Upgrade to a plan with agent resources to create agents.",
-      };
+    // If we have budget data, use it for precise validation
+    if (budget) {
+      if (budget.max_agents === 0) {
+        return {
+          allowed: false,
+          reason: "Your current plan does not include agent hosting. Upgrade to a plan with agent resources to create agents.",
+        };
+      }
+
+      if (budget.used_agents >= budget.max_agents) {
+        return {
+          allowed: false,
+          reason: `You've reached your agent limit (${budget.used_agents}/${budget.max_agents}). Upgrade your plan for more agents.`,
+        };
+      }
+
+      const selectedPreset = SIZE_PRESETS[preset];
+      const remainingCpu = budget.total_cpu - budget.used_cpu;
+      const remainingMemory = budget.total_memory - budget.used_memory;
+
+      if (selectedPreset.cpu > remainingCpu || selectedPreset.memory > remainingMemory) {
+        return {
+          allowed: false,
+          reason: `Not enough resources for this agent size. Available: ${remainingCpu}m CPU, ${remainingMemory}Mi memory. Upgrade your plan for more capacity.`,
+        };
+      }
+
+      return { allowed: true, reason: "" };
     }
 
-    if (budget.max_agents === 0) {
-      return {
-        allowed: false,
-        reason: "Your current plan does not include agent hosting. Upgrade to a plan with agent resources to create agents.",
-      };
+    // No budget data — allow if user has a paid plan, let the backend enforce limits
+    if (hasPaidPlan) {
+      return { allowed: true, reason: "" };
     }
 
-    if (budget.used_agents >= budget.max_agents) {
-      return {
-        allowed: false,
-        reason: `You've reached your agent limit (${budget.used_agents}/${budget.max_agents}). Upgrade your plan for more agents.`,
-      };
-    }
-
-    const selectedPreset = SIZE_PRESETS[preset];
-    const remainingCpu = budget.total_cpu - budget.used_cpu;
-    const remainingMemory = budget.total_memory - budget.used_memory;
-
-    if (selectedPreset.cpu > remainingCpu || selectedPreset.memory > remainingMemory) {
-      return {
-        allowed: false,
-        reason: `Not enough resources for this agent size. Available: ${remainingCpu}m CPU, ${remainingMemory}Mi memory. Upgrade your plan for more capacity.`,
-      };
-    }
-
-    return { allowed: true, reason: "" };
+    // Free plan or no plan — show upgrade
+    return {
+      allowed: false,
+      reason: "Your current plan does not include agent hosting. Upgrade to a plan with agent resources to create agents.",
+    };
   };
 
   const handleNewAgentClick = () => {
