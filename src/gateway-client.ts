@@ -51,7 +51,7 @@ export class GatewayClient {
 
   constructor(config: GatewayConfig) {
     this.config = {
-      gatewayToken: "traefik-forwarded-auth-not-used",
+      gatewayToken: "tamashiiclaw-gateway-auth",
       clientId: "cli",
       clientMode: "cli",
       ...config,
