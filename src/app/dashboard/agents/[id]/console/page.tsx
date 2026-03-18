@@ -2,7 +2,10 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
-import { Send, ArrowLeft, Loader2, MessageSquare, FolderOpen, HardDrive, Settings, TerminalSquare } from "lucide-react";
+import {
+  Send, ArrowLeft, Loader2, MessageSquare, FolderOpen, HardDrive,
+  Settings, TerminalSquare, ScrollText, Zap, MessageCircle, Cpu,
+} from "lucide-react";
 import { useTamashiiAuth } from "@/hooks/useTamashiiAuth";
 import { apiFetch } from "@/lib/api";
 import { useGatewayChat } from "@/hooks/useGatewayChat";
@@ -11,6 +14,10 @@ import { WorkspacePanel } from "@/components/dashboard/WorkspacePanel";
 import { ConfigPanel } from "@/components/dashboard/ConfigPanel";
 import { S3FilesPanel } from "@/components/dashboard/S3FilesPanel";
 import { TerminalPanel } from "@/components/console/TerminalPanel";
+import { ExecPanel } from "@/components/console/ExecPanel";
+import { LogsPanel } from "@/components/console/LogsPanel";
+import { ChannelsPanel } from "@/components/console/ChannelsPanel";
+import { ModelsPanel } from "@/components/console/ModelsPanel";
 
 interface Agent {
   id: string;
@@ -21,13 +28,17 @@ interface Agent {
   gatewayToken?: string | null;
 }
 
-type Tab = "chat" | "terminal" | "workspace" | "files" | "config";
+type Tab = "chat" | "terminal" | "exec" | "logs" | "workspace" | "files" | "models" | "channels" | "config";
 
 const TABS: { key: Tab; label: string; icon: typeof MessageSquare }[] = [
   { key: "chat", label: "Chat", icon: MessageSquare },
-  { key: "terminal", label: "Terminal", icon: TerminalSquare },
+  { key: "terminal", label: "Shell", icon: TerminalSquare },
+  { key: "exec", label: "Exec", icon: Zap },
+  { key: "logs", label: "Logs", icon: ScrollText },
   { key: "workspace", label: "Workspace", icon: FolderOpen },
   { key: "files", label: "Files", icon: HardDrive },
+  { key: "models", label: "Models", icon: Cpu },
+  { key: "channels", label: "Channels", icon: MessageCircle },
   { key: "config", label: "Config", icon: Settings },
 ];
 
@@ -82,6 +93,7 @@ export default function AgentConsolePage() {
     openFile,
     saveFile,
     saveConfig,
+    gateway,
   } = useGatewayChat(agent, getToken);
 
   useEffect(() => {
@@ -196,6 +208,18 @@ export default function AgentConsolePage() {
         </div>
       )}
 
+      {tab === "exec" && (
+        <div className="flex-1 overflow-hidden glass-card">
+          <ExecPanel agentId={agentId} getToken={getToken} />
+        </div>
+      )}
+
+      {tab === "logs" && (
+        <div className="flex-1 overflow-hidden glass-card">
+          <LogsPanel agentId={agentId} getToken={getToken} />
+        </div>
+      )}
+
       {tab === "workspace" && (
         <div className="flex-1 overflow-hidden glass-card">
           <WorkspacePanel
@@ -214,6 +238,18 @@ export default function AgentConsolePage() {
             getToken={getToken}
             active={tab === "files"}
           />
+        </div>
+      )}
+
+      {tab === "models" && (
+        <div className="flex-1 overflow-hidden glass-card">
+          <ModelsPanel gateway={gateway} connected={connected} />
+        </div>
+      )}
+
+      {tab === "channels" && (
+        <div className="flex-1 overflow-hidden glass-card">
+          <ChannelsPanel gateway={gateway} connected={connected} />
         </div>
       )}
 

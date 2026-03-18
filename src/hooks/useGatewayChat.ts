@@ -441,5 +441,6 @@ export function useGatewayChat(
     openFile,
     saveFile,
     saveConfig,
+    gateway: gwRef.current,
   };
 }
