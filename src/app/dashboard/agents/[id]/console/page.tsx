@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
-import { Send, ArrowLeft, Loader2, MessageSquare, FolderOpen, HardDrive, Settings } from "lucide-react";
+import { Send, ArrowLeft, Loader2, MessageSquare, FolderOpen, HardDrive, Settings, TerminalSquare } from "lucide-react";
 import { useTamashiiAuth } from "@/hooks/useTamashiiAuth";
 import { apiFetch } from "@/lib/api";
 import { useGatewayChat } from "@/hooks/useGatewayChat";
@@ -10,6 +10,7 @@ import { ChatMessage } from "@/components/dashboard/ChatMessage";
 import { WorkspacePanel } from "@/components/dashboard/WorkspacePanel";
 import { ConfigPanel } from "@/components/dashboard/ConfigPanel";
 import { S3FilesPanel } from "@/components/dashboard/S3FilesPanel";
+import { TerminalPanel } from "@/components/console/TerminalPanel";
 
 interface Agent {
   id: string;
@@ -20,10 +21,11 @@ interface Agent {
   gatewayToken?: string | null;
 }
 
-type Tab = "chat" | "workspace" | "files" | "config";
+type Tab = "chat" | "terminal" | "workspace" | "files" | "config";
 
 const TABS: { key: Tab; label: string; icon: typeof MessageSquare }[] = [
   { key: "chat", label: "Chat", icon: MessageSquare },
+  { key: "terminal", label: "Terminal", icon: TerminalSquare },
   { key: "workspace", label: "Workspace", icon: FolderOpen },
   { key: "files", label: "Files", icon: HardDrive },
   { key: "config", label: "Config", icon: Settings },
@@ -186,6 +188,12 @@ export default function AgentConsolePage() {
             </button>
           </div>
         </>
+      )}
+
+      {tab === "terminal" && (
+        <div className="flex-1 overflow-hidden glass-card">
+          <TerminalPanel agentId={agentId} getToken={getToken} />
+        </div>
       )}
 
       {tab === "workspace" && (
