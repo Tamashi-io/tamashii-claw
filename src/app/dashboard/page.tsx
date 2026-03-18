@@ -2,19 +2,22 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Bot, Key, Zap, BarChart3, Plus, Play, Square,
   Terminal, Monitor, CreditCard, ArrowRight,
-  Clock, Gauge,
+  Clock, Gauge, Hash, Activity, ExternalLink, Loader2,
 } from "lucide-react";
 import { useTamashiiAuth } from "@/hooks/useTamashiiAuth";
 import { apiFetch } from "@/lib/api";
 import { formatTokens } from "@/lib/format";
 import { agentAvatar } from "@/lib/avatar";
-import { UsageChart } from "@/components/dashboard/UsageChart";
-import { KeyUsageTable } from "@/components/dashboard/KeyUsageTable";
+import UsageChart from "@/components/dashboard/UsageChart";
+import KeyUsageTable from "@/components/dashboard/KeyUsageTable";
 import { OnboardingGuide } from "@/components/dashboard/OnboardingGuide";
 import { StatCardSkeleton, ChartSkeleton, TableSkeleton } from "@/components/dashboard/Skeleton";
+
+/* ── types ─────────────────────────────────────────────── */
 
 interface Agent {
   id: string;
@@ -25,6 +28,15 @@ interface Agent {
   cpu?: number;
   memory_mib?: number;
   memory?: number;
+  started_at?: string | null;
+  last_error?: string | null;
+}
+
+interface PlanLimits {
+  tpd: number;
+  tpm: number;
+  burst_tpm: number;
+  rpm: number;
 }
 
 interface PlanInfo {
@@ -37,12 +49,7 @@ interface PlanInfo {
   features?: string[];
   expires_at?: string | null;
   seconds_remaining?: number;
-  limits?: {
-    tpd: number;
-    tpm: number;
-    burst_tpm: number;
-    rpm: number;
-  };
+  limits?: PlanLimits;
   [k: string]: unknown;
 }
 
@@ -55,9 +62,28 @@ interface BudgetInfo {
   used_memory: number;
 }
 
+interface DayData {
+  date: string;
+  total_tokens: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  requests: number;
+}
+
+interface KeyUsageEntry {
+  key_id: string;
+  key_hash?: string;
+  name: string;
+  tokens?: number;
+  total_tokens?: number;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  requests: number;
+}
+
 interface DashboardData {
   agents: Agent[];
-  keys: Array<{ id?: string; key_id?: string; name?: string; tokens?: number; requests?: number; [k: string]: unknown }>;
+  keys: KeyUsageEntry[];
   stats: {
     total_tokens: number;
     total_requests: number;
@@ -67,35 +93,50 @@ interface DashboardData {
     current_tpm?: number;
     current_rpm?: number;
   };
-  usage: Array<{ date: string; prompt_tokens: number; completion_tokens: number; total_tokens?: number; requests?: number }>;
-  key_usage: Array<{ key_id: string; name: string; tokens: number; requests: number }>;
+  usage: DayData[];
+  key_usage: KeyUsageEntry[];
   plan: PlanInfo | null;
   budget: BudgetInfo | null;
 }
 
-function stateColor(state: string) {
+/* ── helpers ───────────────────────────────────────────── */
+
+function stateDotClass(state: string) {
   switch (state) {
-    case "RUNNING": return "text-green-400";
-    case "STARTING": case "PENDING": return "text-yellow-400";
-    case "FAILED": case "ERROR": return "text-destructive";
-    default: return "text-text-muted";
+    case "RUNNING": return "bg-[#38D39F]";
+    case "FAILED": case "ERROR": return "bg-[#d05f5f]";
+    case "STOPPED": return "bg-text-muted";
+    default: return "bg-[#f0c56c]";
   }
 }
 
-function stateDot(state: string) {
+function stateTextClass(state: string) {
   switch (state) {
-    case "RUNNING": return "bg-green-400";
-    case "STARTING": case "PENDING": return "bg-yellow-400";
-    case "FAILED": case "ERROR": return "bg-red-400";
-    default: return "bg-text-muted";
+    case "RUNNING": return "text-[#38D39F]";
+    case "FAILED": case "ERROR": return "text-[#d05f5f]";
+    case "STOPPED": return "text-text-muted";
+    default: return "text-[#f0c56c]";
   }
 }
+
+function relativeTime(ts: string): string {
+  const diff = Date.now() - new Date(ts).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+/* ── component ─────────────────────────────────────────── */
 
 export default function DashboardPage() {
   const { getToken, user } = useTamashiiAuth();
   const router = useRouter();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [startingId, setStartingId] = useState<string | null>(null);
+  const [stoppingId, setStoppingId] = useState<string | null>(null);
 
   const loadDashboard = useCallback(async () => {
     try {
@@ -121,25 +162,32 @@ export default function DashboardPage() {
   }, [loadDashboard]);
 
   const startAgent = async (id: string) => {
+    setStartingId(id);
     try {
       const token = await getToken();
       await apiFetch(`/agents/${id}/start`, token, { method: "POST" });
-      loadDashboard();
+      await loadDashboard();
     } catch (err) {
       console.error("Failed to start:", err);
+    } finally {
+      setStartingId(null);
     }
   };
 
   const stopAgent = async (id: string) => {
+    setStoppingId(id);
     try {
       const token = await getToken();
       await apiFetch(`/agents/${id}/stop`, token, { method: "POST" });
-      loadDashboard();
+      await loadDashboard();
     } catch (err) {
       console.error("Failed to stop:", err);
+    } finally {
+      setStoppingId(null);
     }
   };
 
+  /* ── loading state ── */
   if (loading) {
     return (
       <div>
@@ -176,6 +224,13 @@ export default function DashboardPage() {
 
   // Greeting
   const displayName = user?.email?.split("@")[0] ?? null;
+
+  // Rate limit display — prefer TPD from plan limits, fall back to TPM
+  const rateLimitLabel = plan?.limits?.tpd
+    ? `${formatTokens(plan.limits.tpd)} TPD`
+    : stats?.rate_limit_tpm
+      ? `${formatTokens(stats.rate_limit_tpm)} TPM`
+      : null;
 
   return (
     <div>
@@ -230,7 +285,7 @@ export default function DashboardPage() {
         </div>
         <div className="glass-card p-5">
           <div className="flex items-center gap-2 text-text-secondary text-sm mb-1">
-            <BarChart3 className="w-4 h-4" />
+            <Hash className="w-4 h-4" />
             Requests
           </div>
           <div className="text-2xl font-bold text-foreground">
@@ -248,11 +303,11 @@ export default function DashboardPage() {
         </div>
         <div className="glass-card p-5">
           <div className="flex items-center gap-2 text-text-secondary text-sm mb-1">
-            <Gauge className="w-4 h-4" />
+            <Activity className="w-4 h-4" />
             Rate Limit
           </div>
           <div className="text-2xl font-bold text-foreground">
-            {stats?.rate_limit_tpm ? `${formatTokens(stats.rate_limit_tpm)} TPM` : "—"}
+            {rateLimitLabel ?? "\u2014"}
           </div>
         </div>
       </div>
@@ -277,6 +332,8 @@ export default function DashboardPage() {
               const isRunning = agent.state === "RUNNING";
               const cpuVal = agent.cpu ?? agent.cpu_millicores;
               const memVal = agent.memory ?? agent.memory_mib;
+              const isStarting = startingId === agent.id;
+              const isStopping = stoppingId === agent.id;
 
               return (
                 <div key={agent.id} className="glass-card p-4">
@@ -290,13 +347,18 @@ export default function DashboardPage() {
                     <div className="flex-1 min-w-0">
                       <h3 className="text-sm font-semibold text-foreground truncate">{agent.name}</h3>
                       <div className="flex items-center gap-1.5">
-                        <span className={`w-1.5 h-1.5 rounded-full ${stateDot(agent.state)}`} />
-                        <span className={`text-xs font-medium ${stateColor(agent.state)}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${stateDotClass(agent.state)}`} />
+                        <span className={`text-xs font-medium ${stateTextClass(agent.state)}`}>
                           {agent.state}
                         </span>
                         {cpuVal != null && memVal != null && (
                           <span className="text-xs text-text-muted ml-1">
                             {cpuVal} CPU &middot; {memVal} GB
+                          </span>
+                        )}
+                        {agent.started_at && isRunning && (
+                          <span className="text-xs text-text-muted ml-1">
+                            {relativeTime(agent.started_at)}
                           </span>
                         )}
                       </div>
@@ -318,27 +380,32 @@ export default function DashboardPage() {
                             rel="noopener noreferrer"
                             className="flex-1 btn-secondary px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1"
                           >
-                            <Monitor className="w-3 h-3" /> Desktop
+                            <ExternalLink className="w-3 h-3" /> Desktop
                           </a>
                         )}
                         <button
                           onClick={() => stopAgent(agent.id)}
-                          className="px-2.5 py-1.5 rounded-lg text-xs font-medium btn-secondary flex items-center gap-1"
+                          disabled={isStopping}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-medium btn-secondary flex items-center gap-1 disabled:opacity-50"
                         >
-                          <Square className="w-3 h-3" />
+                          {isStopping ? <Loader2 className="w-3 h-3 animate-spin" /> : <Square className="w-3 h-3" />}
                         </button>
                       </>
                     )}
                     {!isRunning && agent.state !== "STARTING" && agent.state !== "PENDING" && (
                       <button
                         onClick={() => startAgent(agent.id)}
-                        className="flex-1 btn-primary px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1"
+                        disabled={isStarting}
+                        className="flex-1 btn-primary px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1 disabled:opacity-50"
                       >
-                        <Play className="w-3 h-3" /> Start
+                        {isStarting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                        {isStarting ? "Starting..." : "Start"}
                       </button>
                     )}
                     {(agent.state === "STARTING" || agent.state === "PENDING") && (
-                      <span className="text-xs text-yellow-400 px-2.5 py-1.5">Starting...</span>
+                      <span className="text-xs text-[#f0c56c] px-2.5 py-1.5 flex items-center gap-1">
+                        <Loader2 className="w-3 h-3 animate-spin" /> Starting...
+                      </span>
                     )}
                   </div>
                 </div>
@@ -350,8 +417,8 @@ export default function DashboardPage() {
 
       {/* Charts */}
       <div className="grid lg:grid-cols-2 gap-6 mb-6">
-        <UsageChart data={data?.usage ?? []} />
-        <KeyUsageTable data={data?.key_usage ?? []} />
+        <UsageChart history={data?.usage ?? []} />
+        <KeyUsageTable keys={data?.key_usage ?? []} />
       </div>
 
       {/* Quick actions */}

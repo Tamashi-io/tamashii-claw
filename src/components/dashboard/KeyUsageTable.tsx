@@ -1,55 +1,88 @@
 "use client";
 
-import { formatTokens } from "@/lib/format";
-
 interface KeyUsage {
   key_id: string;
+  key_hash?: string;
   name: string;
-  tokens: number;
+  tokens?: number;
+  total_tokens?: number;
+  prompt_tokens?: number;
+  completion_tokens?: number;
   requests: number;
 }
 
 interface KeyUsageTableProps {
-  data: KeyUsage[];
+  keys: KeyUsage[];
+  loading?: boolean;
 }
 
-export function KeyUsageTable({ data }: KeyUsageTableProps) {
-  if (data.length === 0) {
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toString();
+}
+
+export default function KeyUsageTable({ keys, loading }: KeyUsageTableProps) {
+  if (loading) {
     return (
-      <div className="glass-card p-5">
-        <h3 className="text-sm font-medium text-foreground mb-4">Key Usage</h3>
-        <div className="h-24 flex items-center justify-center text-text-muted text-sm">
-          No API key usage yet
+      <div className="glass-card p-6">
+        <h3 className="text-lg font-semibold text-foreground mb-4">
+          Usage by Key
+        </h3>
+        <div className="h-24 flex items-center justify-center text-text-muted">
+          Loading...
         </div>
       </div>
     );
   }
 
-  const maxTokens = Math.max(...data.map((k) => k.tokens), 1);
+  if (keys.length === 0) {
+    return (
+      <div className="glass-card p-6">
+        <h3 className="text-lg font-semibold text-foreground mb-4">
+          Usage by Key
+        </h3>
+        <p className="text-text-muted text-sm">
+          No usage data yet. Start making API calls to see per-key metrics.
+        </p>
+      </div>
+    );
+  }
+
+  const maxTokens = Math.max(
+    ...keys.map((k) => k.tokens ?? k.total_tokens ?? 0),
+    1,
+  );
 
   return (
-    <div className="glass-card p-5">
-      <h3 className="text-sm font-medium text-foreground mb-4">Key Usage</h3>
+    <div className="glass-card p-6">
+      <h3 className="text-lg font-semibold text-foreground mb-4">
+        Usage by Key (7 days)
+      </h3>
       <div className="space-y-3">
-        {data.map((key) => (
-          <div key={key.key_id}>
-            <div className="flex items-center justify-between text-sm mb-1">
-              <span className="text-text-secondary font-mono text-xs truncate max-w-[160px]">
-                {key.name || key.key_id}
-              </span>
-              <div className="flex items-center gap-3 text-xs text-text-muted">
-                <span>{formatTokens(key.tokens)} tokens</span>
-                <span>{key.requests} reqs</span>
+        {keys.map((k) => {
+          const tkns = k.tokens ?? k.total_tokens ?? 0;
+          const pct = (tkns / maxTokens) * 100;
+          return (
+            <div key={k.key_id ?? k.key_hash}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-medium text-foreground truncate max-w-[200px]">
+                  {k.name || k.key_id || k.key_hash}
+                </span>
+                <div className="flex items-center gap-3 text-xs text-text-muted">
+                  <span>{formatTokens(tkns)} tokens</span>
+                  <span>{k.requests} reqs</span>
+                </div>
+              </div>
+              <div className="w-full h-2 rounded-full bg-surface-low overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-[#38D39F] to-[#6C63FF] transition-all duration-500"
+                  style={{ width: `${Math.max(pct, 1)}%` }}
+                />
               </div>
             </div>
-            <div className="h-2 bg-surface-low rounded-full overflow-hidden">
-              <div
-                className="h-full bg-primary rounded-full transition-all"
-                style={{ width: `${(key.tokens / maxTokens) * 100}%` }}
-              />
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
