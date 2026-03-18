@@ -52,8 +52,8 @@ export class GatewayClient {
   constructor(config: GatewayConfig) {
     this.config = {
       gatewayToken: "traefik-forwarded-auth-not-used",
-      clientId: "tamashiiclaw-ui",
-      clientMode: "ui",
+      clientId: "openclaw-control-ui",
+      clientMode: "webchat",
       ...config,
     };
   }
