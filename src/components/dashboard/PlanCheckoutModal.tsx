@@ -15,6 +15,39 @@ import {
   NETWORKS,
 } from "@/lib/x402";
 
+/** Parse nested x402 / facilitator error into a human-readable message. */
+function parsePaymentError(raw: string): string {
+  // Try to extract errorReason from nested JSON
+  const reasonMatch = raw.match(/errorReason[\\"]* *[:=] *[\\"]*(.*?)[\\"]*(?: *[,}])/);
+  if (reasonMatch) {
+    const reason = reasonMatch[1].replace(/\\\\/g, "");
+    if (reason.includes("free_tier_exhausted")) {
+      return "The payment facilitator\u2019s free tier is exhausted. Please try again later or use a credit card.";
+    }
+    if (reason.includes("insufficient")) {
+      return "Insufficient funds for this transaction. Please check your balance.";
+    }
+    return reason;
+  }
+
+  // Try to extract top-level error field
+  const errorMatch = raw.match(/"error"\s*:\s*"([^"]+)"/);
+  if (errorMatch) {
+    const msg = errorMatch[1];
+    if (msg.includes("Settlement failed")) {
+      return "Payment settlement failed. The facilitator could not process the transaction. Please try again or use a different payment method.";
+    }
+    return msg;
+  }
+
+  // 402 status but no parseable body
+  if (raw.includes("402")) {
+    return "Payment required but could not be processed. Please try a different payment method.";
+  }
+
+  return "Payment failed. Please try again.";
+}
+
 interface PlanCheckoutModalProps {
   plan: Plan;
   isOpen: boolean;
@@ -148,13 +181,9 @@ export function PlanCheckoutModal({
         window.location.reload();
       }, 2000);
     } catch (err: unknown) {
-      let msg = "Payment failed. Please try again.";
-      const errObj = err as { message?: string };
-      if (errObj.message) {
-        msg = errObj.message;
-      }
-      console.error("[checkout] Subscribe failed:", msg);
-      setError(msg);
+      const raw = err instanceof Error ? err.message : String(err);
+      console.error("[checkout] Subscribe failed:", raw);
+      setError(parsePaymentError(raw));
     } finally {
       setProcessing(false);
     }
@@ -195,9 +224,9 @@ export function PlanCheckoutModal({
       }, 2000);
     } catch (err: unknown) {
       setSwapStep("error");
-      const msg = err instanceof Error ? err.message : "Swap failed";
-      console.error("[checkout] Swap-subscribe failed:", msg);
-      setError(msg);
+      const raw = err instanceof Error ? err.message : String(err);
+      console.error("[checkout] Swap-subscribe failed:", raw);
+      setError(parsePaymentError(raw));
     } finally {
       setProcessing(false);
     }
