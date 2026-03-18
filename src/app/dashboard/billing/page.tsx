@@ -47,7 +47,6 @@ export default function BillingPage() {
     billing_postal_code: "",
     billing_country: "",
   });
-  const [companyLines, setCompanyLines] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,10 +65,6 @@ export default function BillingPage() {
         ]);
         if (!cancelled) {
           setPayments(paymentsData.items ?? []);
-          setCompanyLines([
-            ...(profileData.company_billing?.address || []),
-            profileData.company_billing?.email || "",
-          ].filter(Boolean));
           setBillingProfile({
             billing_name: profileData.profile?.billing_name ?? "",
             billing_company: profileData.profile?.billing_company ?? "",
@@ -116,10 +111,6 @@ export default function BillingPage() {
         billing_postal_code: result.profile?.billing_postal_code ?? "",
         billing_country: result.profile?.billing_country ?? "",
       });
-      setCompanyLines([
-        ...(result.company_billing?.address || []),
-        result.company_billing?.email || "",
-      ].filter(Boolean));
       setSaveMessage(
         result.synced_stripe_customer_ids?.length
           ? `Saved and synced ${result.synced_stripe_customer_ids.length} Stripe customer${result.synced_stripe_customer_ids.length === 1 ? "" : "s"}.`
@@ -184,117 +175,99 @@ export default function BillingPage() {
         </div>
       </div>
 
-      {/* Billing details + invoice sender */}
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.8fr)]">
-        <div className="glass-card p-5">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold text-foreground">Billing details</h2>
-            <p className="mt-1 text-sm text-text-secondary">
-              These appear on receipts and are synced to Stripe for future invoices.
-            </p>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="space-y-1 text-sm">
-              <span className="text-text-secondary">Legal name</span>
-              <input
-                className="w-full rounded-lg border border-border bg-surface-low px-3 py-2 text-foreground text-sm focus:outline-none focus:border-primary"
-                value={billingProfile.billing_name ?? ""}
-                onChange={(e) => updateField("billing_name", e.target.value)}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-text-secondary">Company</span>
-              <input
-                className="w-full rounded-lg border border-border bg-surface-low px-3 py-2 text-foreground text-sm focus:outline-none focus:border-primary"
-                value={billingProfile.billing_company ?? ""}
-                onChange={(e) => updateField("billing_company", e.target.value)}
-              />
-            </label>
-            <label className="space-y-1 text-sm md:col-span-2">
-              <span className="text-text-secondary">Tax ID</span>
-              <input
-                className="w-full rounded-lg border border-border bg-surface-low px-3 py-2 text-foreground text-sm focus:outline-none focus:border-primary"
-                value={billingProfile.billing_tax_id ?? ""}
-                onChange={(e) => updateField("billing_tax_id", e.target.value)}
-              />
-            </label>
-            <label className="space-y-1 text-sm md:col-span-2">
-              <span className="text-text-secondary">Address line 1</span>
-              <input
-                className="w-full rounded-lg border border-border bg-surface-low px-3 py-2 text-foreground text-sm focus:outline-none focus:border-primary"
-                value={billingProfile.billing_line1 ?? ""}
-                onChange={(e) => updateField("billing_line1", e.target.value)}
-              />
-            </label>
-            <label className="space-y-1 text-sm md:col-span-2">
-              <span className="text-text-secondary">Address line 2</span>
-              <input
-                className="w-full rounded-lg border border-border bg-surface-low px-3 py-2 text-foreground text-sm focus:outline-none focus:border-primary"
-                value={billingProfile.billing_line2 ?? ""}
-                onChange={(e) => updateField("billing_line2", e.target.value)}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-text-secondary">City</span>
-              <input
-                className="w-full rounded-lg border border-border bg-surface-low px-3 py-2 text-foreground text-sm focus:outline-none focus:border-primary"
-                value={billingProfile.billing_city ?? ""}
-                onChange={(e) => updateField("billing_city", e.target.value)}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-text-secondary">State / region</span>
-              <input
-                className="w-full rounded-lg border border-border bg-surface-low px-3 py-2 text-foreground text-sm focus:outline-none focus:border-primary"
-                value={billingProfile.billing_state ?? ""}
-                onChange={(e) => updateField("billing_state", e.target.value)}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-text-secondary">Postal code</span>
-              <input
-                className="w-full rounded-lg border border-border bg-surface-low px-3 py-2 text-foreground text-sm focus:outline-none focus:border-primary"
-                value={billingProfile.billing_postal_code ?? ""}
-                onChange={(e) => updateField("billing_postal_code", e.target.value)}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-text-secondary">Country</span>
-              <input
-                className="w-full rounded-lg border border-border bg-surface-low px-3 py-2 text-foreground text-sm focus:outline-none focus:border-primary"
-                value={billingProfile.billing_country ?? ""}
-                onChange={(e) => updateField("billing_country", e.target.value)}
-              />
-            </label>
-          </div>
-          <div className="mt-5 flex items-center gap-3">
-            <button
-              onClick={handleSaveProfile}
-              disabled={saving}
-              className="btn-primary px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
-            >
-              {saving ? "Saving..." : "Save billing details"}
-            </button>
-            {saveMessage && (
-              <span className="text-sm text-green-400">{saveMessage}</span>
-            )}
-          </div>
+      {/* Billing details */}
+      <div className="glass-card p-5">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-foreground">Billing details</h2>
+          <p className="mt-1 text-sm text-text-secondary">
+            These appear on receipts and are synced to Stripe for future invoices.
+          </p>
         </div>
-
-        <div className="glass-card p-5">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold text-foreground">Invoice sender</h2>
-            <p className="mt-1 text-sm text-text-secondary">
-              These appear in the &quot;Receipt from&quot; block.
-            </p>
-          </div>
-          <div className="space-y-1 text-sm leading-7 text-foreground">
-            {companyLines.length > 0 ? (
-              companyLines.map((line) => <div key={line}>{line}</div>)
-            ) : (
-              <p className="text-text-muted">No sender info available</p>
-            )}
-          </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="space-y-1 text-sm">
+            <span className="text-text-secondary">Legal name</span>
+            <input
+              className="w-full rounded-lg border border-border bg-surface-low px-3 py-2 text-foreground text-sm focus:outline-none focus:border-primary"
+              value={billingProfile.billing_name ?? ""}
+              onChange={(e) => updateField("billing_name", e.target.value)}
+            />
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-text-secondary">Company</span>
+            <input
+              className="w-full rounded-lg border border-border bg-surface-low px-3 py-2 text-foreground text-sm focus:outline-none focus:border-primary"
+              value={billingProfile.billing_company ?? ""}
+              onChange={(e) => updateField("billing_company", e.target.value)}
+            />
+          </label>
+          <label className="space-y-1 text-sm md:col-span-2">
+            <span className="text-text-secondary">Tax ID</span>
+            <input
+              className="w-full rounded-lg border border-border bg-surface-low px-3 py-2 text-foreground text-sm focus:outline-none focus:border-primary"
+              value={billingProfile.billing_tax_id ?? ""}
+              onChange={(e) => updateField("billing_tax_id", e.target.value)}
+            />
+          </label>
+          <label className="space-y-1 text-sm md:col-span-2">
+            <span className="text-text-secondary">Address line 1</span>
+            <input
+              className="w-full rounded-lg border border-border bg-surface-low px-3 py-2 text-foreground text-sm focus:outline-none focus:border-primary"
+              value={billingProfile.billing_line1 ?? ""}
+              onChange={(e) => updateField("billing_line1", e.target.value)}
+            />
+          </label>
+          <label className="space-y-1 text-sm md:col-span-2">
+            <span className="text-text-secondary">Address line 2</span>
+            <input
+              className="w-full rounded-lg border border-border bg-surface-low px-3 py-2 text-foreground text-sm focus:outline-none focus:border-primary"
+              value={billingProfile.billing_line2 ?? ""}
+              onChange={(e) => updateField("billing_line2", e.target.value)}
+            />
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-text-secondary">City</span>
+            <input
+              className="w-full rounded-lg border border-border bg-surface-low px-3 py-2 text-foreground text-sm focus:outline-none focus:border-primary"
+              value={billingProfile.billing_city ?? ""}
+              onChange={(e) => updateField("billing_city", e.target.value)}
+            />
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-text-secondary">State / region</span>
+            <input
+              className="w-full rounded-lg border border-border bg-surface-low px-3 py-2 text-foreground text-sm focus:outline-none focus:border-primary"
+              value={billingProfile.billing_state ?? ""}
+              onChange={(e) => updateField("billing_state", e.target.value)}
+            />
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-text-secondary">Postal code</span>
+            <input
+              className="w-full rounded-lg border border-border bg-surface-low px-3 py-2 text-foreground text-sm focus:outline-none focus:border-primary"
+              value={billingProfile.billing_postal_code ?? ""}
+              onChange={(e) => updateField("billing_postal_code", e.target.value)}
+            />
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-text-secondary">Country</span>
+            <input
+              className="w-full rounded-lg border border-border bg-surface-low px-3 py-2 text-foreground text-sm focus:outline-none focus:border-primary"
+              value={billingProfile.billing_country ?? ""}
+              onChange={(e) => updateField("billing_country", e.target.value)}
+            />
+          </label>
+        </div>
+        <div className="mt-5 flex items-center gap-3">
+          <button
+            onClick={handleSaveProfile}
+            disabled={saving}
+            className="btn-primary px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
+          >
+            {saving ? "Saving..." : "Save billing details"}
+          </button>
+          {saveMessage && (
+            <span className="text-sm text-green-400">{saveMessage}</span>
+          )}
         </div>
       </div>
 
