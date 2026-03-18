@@ -167,53 +167,11 @@ export function useGatewayChat(
   const connectGateway = useCallback(async () => {
     if (!agent || agent.state !== "RUNNING") return;
 
-    // Resolve gateway URL:
-    // Per HyperClaw routing: root hostname IS the gateway (wss://{name}.hypercli.com)
-    // Desktop is at https://desktop-{name}.hypercli.com
-    // openclaw_url may also point directly to the gateway
-    // Fall back to backend WebSocket proxy if no hostname available
     const hostname = agent.hostname;
     const ocUrl = agent.openclaw_url;
 
-    let gwBase: string | null = null;
-    let useProxy = false;
-
-    if (ocUrl) {
-      // Use openclaw_url directly if provided
-      gwBase = ocUrl.startsWith("wss://") || ocUrl.startsWith("ws://") ? ocUrl : `wss://${ocUrl}`;
-    } else if (hostname) {
-      // Root hostname is the gateway
-      gwBase = `wss://${hostname}`;
-    }
-
-    if (!gwBase && !hostname) return;
-
     try {
       const authToken = await getToken();
-
-      let url: string;
-      if (gwBase) {
-        // Try direct connection with HyperClaw JWT
-        let hyperclawJwt: string | undefined;
-        try {
-          const tokenResp = await apiFetch<{ token?: string; jwt_token?: string }>(
-            `/agents/${agent.id}/token`,
-            authToken
-          );
-          hyperclawJwt = tokenResp.token ?? tokenResp.jwt_token ?? undefined;
-        } catch {
-          // Fall back to connecting without JWT
-        }
-
-        url = hyperclawJwt
-          ? `${gwBase}?token=${encodeURIComponent(hyperclawJwt)}`
-          : gwBase;
-      } else {
-        // No gateway URL available — use backend proxy
-        useProxy = true;
-        const wsBase = API_BASE.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
-        url = `${wsBase}/ws/agents/${agent.id}/gateway?token=${encodeURIComponent(authToken)}`;
-      }
 
       // Resolve gateway token for OpenClaw handshake: agent field → localStorage → env
       let gatewayToken =
@@ -231,9 +189,55 @@ export function useGatewayChat(
         }
       }
 
-      console.log("[gateway] Connecting:", { url: url.split("?")[0], mode: useProxy ? "proxy" : "direct", hasGatewayToken: !!gatewayToken });
+      // Get HyperClaw JWT for direct connection
+      let hyperclawJwt: string | undefined;
+      try {
+        const tokenResp = await apiFetch<{ token?: string; jwt_token?: string }>(
+          `/agents/${agent.id}/token`,
+          authToken
+        );
+        hyperclawJwt = tokenResp.token ?? tokenResp.jwt_token ?? undefined;
+      } catch {
+        // Fall back to proxy without JWT
+      }
 
-      const gw = new GatewayClient({ url, gatewayToken });
+      // Build direct gateway URL
+      let directUrl: string | null = null;
+      if (ocUrl) {
+        const base = ocUrl.startsWith("wss://") || ocUrl.startsWith("ws://") ? ocUrl : `wss://${ocUrl}`;
+        directUrl = hyperclawJwt ? `${base}?token=${encodeURIComponent(hyperclawJwt)}` : base;
+      } else if (hostname) {
+        const base = `wss://${hostname}`;
+        directUrl = hyperclawJwt ? `${base}?token=${encodeURIComponent(hyperclawJwt)}` : base;
+      }
+
+      // Build backend proxy URL (always available as fallback — no browser Origin issues)
+      const wsBase = API_BASE.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
+      const proxyUrl = `${wsBase}/ws/agents/${agent.id}/gateway?token=${encodeURIComponent(authToken)}`;
+
+      // Try direct connection first, automatically fall back to backend proxy
+      // (proxy avoids browser Origin header issues with the OpenClaw gateway)
+      const makeGw = (url: string, mode: string): GatewayClient => {
+        console.log("[gateway] Connecting:", { url: url.split("?")[0], mode, hasGatewayToken: !!gatewayToken });
+        return new GatewayClient({ url, gatewayToken });
+      };
+
+      let gw: GatewayClient;
+      if (directUrl) {
+        try {
+          gw = makeGw(directUrl, "direct");
+          // Register events before connect so we don't miss any
+          // (they'll be re-registered below after the variable is finalized)
+          await gw.connect();
+        } catch (directErr) {
+          console.warn("[gateway] Direct connection failed, falling back to proxy:", directErr instanceof Error ? directErr.message : directErr);
+          gw = makeGw(proxyUrl, "proxy");
+          await gw.connect();
+        }
+      } else {
+        gw = makeGw(proxyUrl, "proxy");
+        await gw.connect();
+      }
 
       gw.onEvent((event, payload) => {
         if (event === "chat") {
@@ -322,7 +326,6 @@ export function useGatewayChat(
         }
       });
 
-      await gw.connect();
       gwRef.current = gw;
       setConnected(true);
       setError(null);
