@@ -48,6 +48,9 @@ function parsePaymentError(raw: string): string {
   return "Payment failed. Please try again.";
 }
 
+// TamashiiClaw markup on top of HyperClaw plan prices
+const PLAN_MARKUP = 5;
+
 interface PlanCheckoutModalProps {
   plan: Plan;
   isOpen: boolean;
@@ -244,16 +247,18 @@ export function PlanCheckoutModal({
     }
   };
 
+  const displayPrice = plan.price + PLAN_MARKUP;
+
   const buttonLabel = () => {
     if (processing && swapStep !== "idle") return SWAP_STEP_LABELS[swapStep];
     if (processing) return "Processing...";
-    if (method === "card") return `Pay $${plan.price} with Card`;
+    if (method === "card") return `Pay $${displayPrice} with Card`;
     if (!walletAddress) return `Connect Wallet (${NETWORKS[network].name})`;
     if (network === "bnb") {
       const tokenLabel = bnbPayToken === "bnb" ? "BNB" : "USDC";
-      return `Swap ${tokenLabel} & Pay $${plan.price}`;
+      return `Swap ${tokenLabel} & Pay $${displayPrice}`;
     }
-    return `Pay $${plan.price} with USDC`;
+    return `Pay $${displayPrice} with USDC`;
   };
 
   return (
@@ -311,7 +316,7 @@ export function PlanCheckoutModal({
                         {plan.name}
                       </span>
                       <span className="text-foreground font-bold">
-                        ${plan.price}
+                        ${displayPrice}
                         <span className="text-text-muted text-sm font-normal">
                           /mo
                         </span>
@@ -468,9 +473,9 @@ export function PlanCheckoutModal({
                           <span className="text-text-muted ml-auto">
                             {network === "bnb"
                               ? bnbPayToken === "bnb"
-                                ? `~$${plan.price} in BNB`
-                                : `${plan.price} USDC`
-                              : `${plan.price} USDC`}
+                                ? `~$${displayPrice} in BNB`
+                                : `${displayPrice} USDC`
+                              : `${displayPrice} USDC`}
                             {network === "bnb" && " → Base"}
                           </span>
                         </div>
@@ -479,8 +484,8 @@ export function PlanCheckoutModal({
                           Connect your wallet to pay{" "}
                           <span className="text-foreground font-medium">
                             {network === "bnb" && bnbPayToken === "bnb"
-                              ? `~$${plan.price} in BNB`
-                              : `$${plan.price} USDC`}
+                              ? `~$${displayPrice} in BNB`
+                              : `$${displayPrice} USDC`}
                           </span>{" "}
                           on {NETWORKS[network].name}.
                           {network === "bnb" && (

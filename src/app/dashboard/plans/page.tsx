@@ -7,6 +7,9 @@ import { apiFetch, API_BASE } from "@/lib/api";
 import { Plan, formatTokens } from "@/lib/format";
 import { PlanCheckoutModal } from "@/components/dashboard/PlanCheckoutModal";
 
+// TamashiiClaw markup on top of HyperClaw plan prices
+const PLAN_MARKUP = 5;
+
 export default function PlansPage() {
   const { getToken } = useTamashiiAuth();
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -71,7 +74,7 @@ export default function PlansPage() {
 
               <h3 className="text-lg font-semibold text-foreground">{plan.name}</h3>
               <div className="mt-2 mb-1">
-                <span className="text-3xl font-bold text-foreground">${plan.price}</span>
+                <span className="text-3xl font-bold text-foreground">${plan.price + PLAN_MARKUP}</span>
                 <span className="text-text-muted text-sm">/month</span>
               </div>
               <p className="text-sm text-text-tertiary mb-1">
