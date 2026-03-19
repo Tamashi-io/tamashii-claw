@@ -48,9 +48,6 @@ function parsePaymentError(raw: string): string {
   return "Payment failed. Please try again.";
 }
 
-// TamashiiClaw markup on top of HyperClaw plan prices
-const PLAN_MARKUP = 5;
-
 interface PlanCheckoutModalProps {
   plan: Plan;
   isOpen: boolean;
@@ -247,7 +244,7 @@ export function PlanCheckoutModal({
     }
   };
 
-  const displayPrice = plan.price + PLAN_MARKUP;
+  const displayPrice = plan.price;
 
   const buttonLabel = () => {
     if (processing && swapStep !== "idle") return SWAP_STEP_LABELS[swapStep];

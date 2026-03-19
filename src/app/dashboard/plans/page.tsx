@@ -7,12 +7,84 @@ import { apiFetch, API_BASE } from "@/lib/api";
 import { Plan, formatTokens } from "@/lib/format";
 import { PlanCheckoutModal } from "@/components/dashboard/PlanCheckoutModal";
 
-// TamashiiClaw markup on top of HyperClaw plan prices
-const PLAN_MARKUP = 5;
+// TamashiiClaw plan definitions with real USDC prices.
+// HyperClaw x402 charges their amount separately — these are OUR prices.
+const TAMASHII_PLANS: Plan[] = [
+  {
+    id: "1aiu",
+    name: "1 Agent",
+    price: 25,
+    aiu: 1,
+    features: [
+      "1 persistent agent",
+      "Decentralized inference",
+      "Telegram, Slack & Discord",
+      "x402 onchain payments",
+    ],
+    models: [],
+    highlighted: false,
+    limits: { tpd: 500_000, tpm: 694, burst_tpm: 34_700, rpm: 10 },
+    agents: 1,
+  },
+  {
+    id: "2aiu",
+    name: "2 Agents",
+    price: 45,
+    aiu: 2,
+    features: [
+      "2 persistent agents",
+      "Decentralized inference",
+      "Telegram, Slack & Discord",
+      "x402 onchain payments",
+      "Priority support",
+    ],
+    models: [],
+    highlighted: true,
+    limits: { tpd: 1_000_000, tpm: 1_389, burst_tpm: 69_400, rpm: 20 },
+    agents: 2,
+  },
+  {
+    id: "3aiu",
+    name: "5 Agents",
+    price: 105,
+    aiu: 5,
+    features: [
+      "5 persistent agents",
+      "Decentralized inference",
+      "Telegram, Slack & Discord",
+      "x402 onchain payments",
+      "Priority support",
+      "Custom model providers",
+    ],
+    models: [],
+    highlighted: false,
+    limits: { tpd: 2_500_000, tpm: 3_472, burst_tpm: 173_600, rpm: 50 },
+    agents: 5,
+  },
+  {
+    id: "4aiu",
+    name: "10 Agents",
+    price: 205,
+    aiu: 10,
+    features: [
+      "10 persistent agents",
+      "Decentralized inference",
+      "Telegram, Slack & Discord",
+      "x402 onchain payments",
+      "Priority support",
+      "Custom model providers",
+      "Dedicated resources",
+    ],
+    models: [],
+    highlighted: false,
+    limits: { tpd: 5_000_000, tpm: 6_944, burst_tpm: 347_200, rpm: 100 },
+    agents: 10,
+  },
+];
 
 export default function PlansPage() {
   const { getToken } = useTamashiiAuth();
-  const [plans, setPlans] = useState<Plan[]>([]);
+  const [plans, setPlans] = useState<Plan[]>(TAMASHII_PLANS);
   const [currentPlanId, setCurrentPlanId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [checkoutPlan, setCheckoutPlan] = useState<Plan | null>(null);
@@ -20,11 +92,30 @@ export default function PlansPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [plansRes, token] = await Promise.all([
-          fetch(`${API_BASE}/plans`).then((r) => r.json()),
-          getToken(),
-        ]);
-        setPlans(plansRes.plans ?? []);
+        const token = await getToken();
+
+        // Merge HyperClaw limits into our plan definitions if available
+        try {
+          const plansRes = await fetch(`${API_BASE}/plans`).then((r) => r.json());
+          const hcPlans: Plan[] = plansRes.plans ?? [];
+          if (hcPlans.length > 0) {
+            setPlans(
+              TAMASHII_PLANS.map((tp) => {
+                const hc = hcPlans.find((h) => h.id === tp.id);
+                if (!hc) return tp;
+                return {
+                  ...tp,
+                  limits: hc.limits ?? tp.limits,
+                  agents: hc.agents ?? tp.agents,
+                  aiu: hc.aiu ?? tp.aiu,
+                  models: hc.models ?? tp.models,
+                };
+              }),
+            );
+          }
+        } catch {
+          // Use hardcoded plans
+        }
 
         const currentPlan = await apiFetch<{ id?: string; plan_id?: string }>("/plans/current", token).catch(() => null);
         setCurrentPlanId(currentPlan?.id ?? currentPlan?.plan_id ?? null);
@@ -74,7 +165,7 @@ export default function PlansPage() {
 
               <h3 className="text-lg font-semibold text-foreground">{plan.name}</h3>
               <div className="mt-2 mb-1">
-                <span className="text-3xl font-bold text-foreground">${plan.price + PLAN_MARKUP}</span>
+                <span className="text-3xl font-bold text-foreground">${plan.price}</span>
                 <span className="text-text-muted text-sm">/month</span>
               </div>
               <p className="text-sm text-text-tertiary mb-1">
