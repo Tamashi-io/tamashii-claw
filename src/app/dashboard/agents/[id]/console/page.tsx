@@ -113,16 +113,26 @@ export default function AgentConsolePage() {
           <h1 className="text-lg font-bold text-foreground">{agent?.name ?? "Agent Console"}</h1>
           <div className="flex items-center gap-2 text-xs">
             {agent?.state === "PENDING" || agent?.state === "STARTING" ? (
-              <span className="text-yellow-400 flex items-center gap-1">
+              <span className="text-[#f0c56c] flex items-center gap-1">
                 <Loader2 className="w-3 h-3 animate-spin" />
                 Agent {agent.state.toLowerCase()}…
               </span>
+            ) : connected ? (
+              <span className="text-[#38D39F] flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#38D39F]" />
+                Connected
+              </span>
+            ) : error?.startsWith("Waiting") ? (
+              <span className="text-[#f0c56c] flex items-center gap-1">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                {error}
+              </span>
             ) : (
-              <span className={connected ? "text-green-400" : "text-text-muted"}>
-                {connected ? "Connected" : "Disconnected"}
+              <span className="text-text-muted flex items-center gap-1">
+                {!error && <Loader2 className="w-3 h-3 animate-spin" />}
+                {error || "Connecting to gateway…"}
               </span>
             )}
-            {error && <span className="text-destructive truncate">{error}</span>}
           </div>
         </div>
 
@@ -151,16 +161,20 @@ export default function AgentConsolePage() {
           {/* Messages */}
           <div className="flex-1 overflow-y-auto glass-card p-4 mb-4">
             {messages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-text-muted text-sm gap-2">
+              <div className="h-full flex flex-col items-center justify-center text-text-muted text-sm gap-3">
                 {agent?.state === "PENDING" || agent?.state === "STARTING" ? (
                   <>
-                    <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                    <Loader2 className="w-8 h-8 animate-spin text-[#f0c56c]" />
                     <span>Waiting for agent to start…</span>
                   </>
                 ) : connected ? (
                   "Send a message to start chatting"
                 ) : (
-                  "Connecting to agent..."
+                  <>
+                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                    <span>{error?.startsWith("Waiting") ? error : "Connecting to gateway…"}</span>
+                    <span className="text-xs text-text-muted">Agent gateway takes ~60s to boot</span>
+                  </>
                 )}
               </div>
             ) : (

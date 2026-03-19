@@ -202,29 +202,20 @@ export function useGatewayChat(
       }
 
       // Build direct gateway URL
-      let directUrl: string | null = null;
+      let gwUrl: string | null = null;
       if (ocUrl) {
         const base = ocUrl.startsWith("wss://") || ocUrl.startsWith("ws://") ? ocUrl : `wss://${ocUrl}`;
-        directUrl = hyperclawJwt ? `${base}?token=${encodeURIComponent(hyperclawJwt)}` : base;
+        gwUrl = hyperclawJwt ? `${base}?token=${encodeURIComponent(hyperclawJwt)}` : base;
       } else if (hostname) {
         const base = `wss://${hostname}`;
-        directUrl = hyperclawJwt ? `${base}?token=${encodeURIComponent(hyperclawJwt)}` : base;
+        gwUrl = hyperclawJwt ? `${base}?token=${encodeURIComponent(hyperclawJwt)}` : base;
       }
 
-      // Build backend proxy URL (always available as fallback — no browser Origin issues)
-      const wsBase = API_BASE.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
-      const proxyUrl = `${wsBase}/ws/agents/${agent.id}/gateway?token=${encodeURIComponent(authToken)}`;
+      if (!gwUrl) return;
 
-      // Try direct connection first, automatically fall back to backend proxy
-      // (proxy avoids browser Origin header issues with the OpenClaw gateway)
-      const makeGw = (url: string, mode: string): GatewayClient => {
-        console.log("[gateway] Connecting:", { url: url.split("?")[0], mode, hasGatewayToken: !!gatewayToken });
-        return new GatewayClient({ url, gatewayToken });
-      };
-
-      // Try connecting with retries — agent gateway takes ~60s to boot
-      const MAX_RETRIES = 4;
-      const RETRY_DELAYS = [0, 10_000, 20_000, 30_000]; // 0s, 10s, 20s, 30s
+      // Retry with backoff — agent gateway takes ~60-90s to boot
+      const MAX_RETRIES = 5;
+      const RETRY_DELAYS = [0, 15_000, 15_000, 20_000, 30_000, 30_000];
 
       let gw: GatewayClient | null = null;
       let lastError = "";
@@ -233,37 +224,28 @@ export function useGatewayChat(
         if (attempt > 0) {
           const delay = RETRY_DELAYS[Math.min(attempt, RETRY_DELAYS.length - 1)];
           console.log(`[gateway] Retry ${attempt}/${MAX_RETRIES} in ${delay / 1000}s...`);
-          setError(`Connecting... (attempt ${attempt + 1}/${MAX_RETRIES + 1})`);
+          setError(`Waiting for gateway... (${attempt}/${MAX_RETRIES})`);
           await new Promise((r) => setTimeout(r, delay));
         }
 
-        // Try direct first
-        if (directUrl) {
-          try {
-            gw = makeGw(directUrl, "direct");
-            await gw.connect();
-            break;
-          } catch (directErr) {
-            lastError = directErr instanceof Error ? directErr.message : String(directErr);
-            console.warn(`[gateway] Direct failed (attempt ${attempt + 1}):`, lastError);
-            gw = null;
-          }
-        }
-
-        // Try proxy
         try {
-          gw = makeGw(proxyUrl, "proxy");
+          console.log("[gateway] Connecting:", {
+            url: gwUrl.split("?")[0],
+            attempt: attempt + 1,
+            hasGatewayToken: !!gatewayToken,
+          });
+          gw = new GatewayClient({ url: gwUrl, gatewayToken });
           await gw.connect();
           break;
-        } catch (proxyErr) {
-          lastError = proxyErr instanceof Error ? proxyErr.message : String(proxyErr);
-          console.warn(`[gateway] Proxy failed (attempt ${attempt + 1}):`, lastError);
+        } catch (err) {
+          lastError = err instanceof Error ? err.message : String(err);
+          console.warn(`[gateway] Attempt ${attempt + 1} failed:`, lastError);
           gw = null;
         }
       }
 
       if (!gw) {
-        throw new Error(`Gateway connection failed after ${MAX_RETRIES + 1} attempts: ${lastError}`);
+        throw new Error(`Gateway unavailable after ${MAX_RETRIES + 1} attempts: ${lastError}`);
       }
 
       gw.onEvent((event, payload) => {
