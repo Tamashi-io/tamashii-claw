@@ -222,21 +222,48 @@ export function useGatewayChat(
         return new GatewayClient({ url, gatewayToken });
       };
 
-      let gw: GatewayClient;
-      if (directUrl) {
+      // Try connecting with retries — agent gateway takes ~60s to boot
+      const MAX_RETRIES = 4;
+      const RETRY_DELAYS = [0, 10_000, 20_000, 30_000]; // 0s, 10s, 20s, 30s
+
+      let gw: GatewayClient | null = null;
+      let lastError = "";
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (attempt > 0) {
+          const delay = RETRY_DELAYS[Math.min(attempt, RETRY_DELAYS.length - 1)];
+          console.log(`[gateway] Retry ${attempt}/${MAX_RETRIES} in ${delay / 1000}s...`);
+          setError(`Connecting... (attempt ${attempt + 1}/${MAX_RETRIES + 1})`);
+          await new Promise((r) => setTimeout(r, delay));
+        }
+
+        // Try direct first
+        if (directUrl) {
+          try {
+            gw = makeGw(directUrl, "direct");
+            await gw.connect();
+            break;
+          } catch (directErr) {
+            lastError = directErr instanceof Error ? directErr.message : String(directErr);
+            console.warn(`[gateway] Direct failed (attempt ${attempt + 1}):`, lastError);
+            gw = null;
+          }
+        }
+
+        // Try proxy
         try {
-          gw = makeGw(directUrl, "direct");
-          // Register events before connect so we don't miss any
-          // (they'll be re-registered below after the variable is finalized)
-          await gw.connect();
-        } catch (directErr) {
-          console.warn("[gateway] Direct connection failed, falling back to proxy:", directErr instanceof Error ? directErr.message : directErr);
           gw = makeGw(proxyUrl, "proxy");
           await gw.connect();
+          break;
+        } catch (proxyErr) {
+          lastError = proxyErr instanceof Error ? proxyErr.message : String(proxyErr);
+          console.warn(`[gateway] Proxy failed (attempt ${attempt + 1}):`, lastError);
+          gw = null;
         }
-      } else {
-        gw = makeGw(proxyUrl, "proxy");
-        await gw.connect();
+      }
+
+      if (!gw) {
+        throw new Error(`Gateway connection failed after ${MAX_RETRIES + 1} attempts: ${lastError}`);
       }
 
       gw.onEvent((event, payload) => {

@@ -3,7 +3,7 @@
  */
 
 const PROTOCOL_VERSION = 3;
-const DEFAULT_TIMEOUT = 15_000;
+const DEFAULT_TIMEOUT = 60_000;
 const CHAT_TIMEOUT = 300_000;
 
 export interface GatewayError {
