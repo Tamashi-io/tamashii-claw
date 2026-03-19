@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Play, Square, Trash2, X, Cpu, HardDrive, Terminal } from "lucide-react";
+import { Plus, Play, Square, Trash2, X, Cpu, HardDrive, Terminal, Loader2 } from "lucide-react";
 import { useTamashiiAuth } from "@/hooks/useTamashiiAuth";
 import { apiFetch } from "@/lib/api";
 import { agentAvatar } from "@/lib/avatar";
@@ -113,10 +113,23 @@ export default function AgentsPage() {
     }
   };
 
+  // Poll while any agent is booting (PENDING/STARTING)
   useEffect(() => {
     loadAgents();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const hasBooting = agents.some(
+      (a) => a.state === "PENDING" || a.state === "STARTING",
+    );
+    if (!hasBooting) return;
+    const timer = setInterval(() => {
+      loadAgents();
+    }, 5000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agents]);
 
   const canCreateAgent = (): { allowed: boolean; reason: string } => {
     // If we have budget data, use it for precise validation
@@ -251,12 +264,24 @@ export default function AgentsPage() {
 
   const stateColor = (state: string) => {
     switch (state) {
-      case "RUNNING": return "text-green-400";
-      case "STARTING": case "PENDING": return "text-yellow-400";
+      case "RUNNING": return "text-[#38D39F]";
+      case "STARTING": case "PENDING": return "text-[#f0c56c]";
+      case "FAILED": case "ERROR": return "text-[#d05f5f]";
       case "STOPPED": return "text-text-muted";
       default: return "text-text-muted";
     }
   };
+
+  const stateDot = (state: string) => {
+    switch (state) {
+      case "RUNNING": return "bg-[#38D39F]";
+      case "STARTING": case "PENDING": return "bg-[#f0c56c]";
+      case "FAILED": case "ERROR": return "bg-[#d05f5f]";
+      default: return "bg-text-muted";
+    }
+  };
+
+  const isBooting = (state: string) => state === "PENDING" || state === "STARTING";
 
   return (
     <div>
@@ -414,9 +439,16 @@ export default function AgentsPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="text-sm font-semibold text-foreground truncate hover:text-primary transition-colors">{agent.name}</h3>
-                    <span className={`text-xs font-medium ${stateColor(agent.state)}`}>
-                      {agent.state}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {isBooting(agent.state) ? (
+                        <Loader2 className={`w-3 h-3 animate-spin ${stateColor(agent.state)}`} />
+                      ) : (
+                        <span className={`w-1.5 h-1.5 rounded-full ${stateDot(agent.state)}`} />
+                      )}
+                      <span className={`text-xs font-medium ${stateColor(agent.state)}`}>
+                        {isBooting(agent.state) ? "Starting..." : agent.state}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -436,7 +468,12 @@ export default function AgentsPage() {
                       Console
                     </button>
                   )}
-                  {isRunning ? (
+                  {isBooting(agent.state) ? (
+                    <span className="flex-1 px-3 py-1.5 rounded-lg text-xs font-medium text-[#f0c56c] flex items-center justify-center gap-1.5 bg-[#f0c56c]/10 border border-[#f0c56c]/20">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Booting...
+                    </span>
+                  ) : isRunning ? (
                     <button
                       onClick={() => stopAgent(agent.id)}
                       className="flex-1 btn-secondary px-3 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1"
