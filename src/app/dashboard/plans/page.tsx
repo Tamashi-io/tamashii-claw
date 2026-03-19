@@ -13,6 +13,21 @@ import { PlanCheckoutModal } from "@/components/dashboard/PlanCheckoutModal";
 const TAMASHII_PLANS: Plan[] = [
   {
     id: "1aiu",
+    name: "Test ($0.01)",
+    price: 0.01,
+    aiu: 1,
+    features: [
+      "Test plan",
+      "1 agent (2 vCPU, 2 GiB)",
+      "All features included",
+    ],
+    models: ["kimi-k2.5", "glm-5", "minimax-m2.5"],
+    highlighted: false,
+    limits: { tpd: 50_000_000, tpm: 34_722, burst_tpm: 1_736_100, rpm: 173 },
+    agents: 1,
+  },
+  {
+    id: "1aiu",
     name: "1 Agent",
     price: 25,
     aiu: 1,
@@ -138,7 +153,7 @@ export default function PlansPage() {
     return (
       <div>
         <h1 className="text-2xl font-bold text-foreground mb-6">Plans</h1>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-6">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="glass-card p-6 h-64 animate-shimmer" />
           ))}
@@ -151,12 +166,12 @@ export default function PlansPage() {
     <div>
       <h1 className="text-2xl font-bold text-foreground mb-6">Plans</h1>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {plans.map((plan) => {
+      <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-6">
+        {plans.map((plan, idx) => {
           const isCurrent = plan.id === currentPlanId;
           return (
             <div
-              key={plan.id}
+              key={`${plan.id}-${idx}`}
               className={`glass-card p-6 flex flex-col ${
                 plan.highlighted
                   ? "border-lime/40 shadow-[0_0_40px_rgba(57,255,20,0.12)]"
