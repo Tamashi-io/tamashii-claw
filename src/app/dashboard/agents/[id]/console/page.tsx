@@ -87,6 +87,7 @@ export default function AgentConsolePage() {
     sending,
     connected,
     error,
+    scopeLimited,
     files,
     config,
     configSchema,
@@ -121,6 +122,11 @@ export default function AgentConsolePage() {
               <span className="text-[#38D39F] flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#38D39F]" />
                 Connected
+                {scopeLimited && (
+                  <span className="text-[#f0c56c] text-[10px] ml-1" title="Connected in CLI mode — some features use REST API fallback">
+                    (CLI)
+                  </span>
+                )}
               </span>
             ) : error?.startsWith("Waiting") ? (
               <span className="text-[#f0c56c] flex items-center gap-1">

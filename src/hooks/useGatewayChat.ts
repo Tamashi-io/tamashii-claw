@@ -154,6 +154,7 @@ export function useGatewayChat(
   const gwRef = useRef<GatewayClient | null>(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scopeLimited, setScopeLimited] = useState(false);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -301,6 +302,13 @@ else:
         console.warn("[gateway] Pre-flight config check failed:", e);
       }
 
+      // Try "openclaw-control-ui" first (full scopes), fall back to "cli" (limited but no device identity)
+      const CLIENT_IDS_TO_TRY: Array<{ clientId: string; clientMode: string }> = [
+        { clientId: "openclaw-control-ui", clientMode: "webchat" },
+        { clientId: "cli", clientMode: "cli" },
+      ];
+      let activeClientIdx = 0;
+
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         if (attempt > 0) {
           const delay = RETRY_DELAYS[Math.min(attempt, RETRY_DELAYS.length - 1)];
@@ -309,19 +317,36 @@ else:
           await new Promise((r) => setTimeout(r, delay));
         }
 
+        const { clientId: tryClientId, clientMode: tryClientMode } = CLIENT_IDS_TO_TRY[activeClientIdx];
+
         try {
           console.log("[gateway] Connecting:", {
             url: gwUrl.split("?")[0],
             attempt: attempt + 1,
+            clientId: tryClientId,
+            clientMode: tryClientMode,
             hasGatewayToken: !!gatewayToken,
           });
-          gw = new GatewayClient({ url: gwUrl, gatewayToken });
+          gw = new GatewayClient({ url: gwUrl, gatewayToken, clientId: tryClientId, clientMode: tryClientMode });
           await gw.connect();
+          console.log(`[gateway] Connected with clientId="${tryClientId}"`);
           break;
         } catch (err) {
           lastError = err instanceof Error ? err.message : String(err);
-          console.warn(`[gateway] Attempt ${attempt + 1} failed:`, lastError);
+          console.warn(`[gateway] Attempt ${attempt + 1} (${tryClientId}) failed:`, lastError);
           gw = null;
+
+          // If device identity required, immediately try CLI fallback (don't count as retry)
+          if (
+            lastError.includes("device identity") &&
+            activeClientIdx < CLIENT_IDS_TO_TRY.length - 1
+          ) {
+            activeClientIdx++;
+            const next = CLIENT_IDS_TO_TRY[activeClientIdx];
+            console.log(`[gateway] Falling back to clientId="${next.clientId}" (no device identity)`);
+            attempt--; // Don't count this as a retry
+            continue;
+          }
 
           // Auto-fix: patch gateway config for token mismatch
           const needsTokenFix = lastError.includes("token mismatch") && !configFixAttempted;
@@ -446,6 +471,9 @@ else:
       setConnected(true);
       setError(null);
 
+      // Track whether we're scope-limited (CLI mode without operator.read)
+      let isScopeLimited = false;
+
       // Load chat history (best-effort — scope may be limited in CLI mode)
       try {
         const history = await gw.chatHistory("main", 200);
@@ -454,7 +482,12 @@ else:
           .filter((message): message is ChatMessage => message !== null);
         setMessages(hydrated.length > 0 ? hydrated : []);
       } catch (e) {
-        console.warn("[gateway] Could not load chat history:", e);
+        const errMsg = e instanceof Error ? e.message : String(e);
+        console.warn("[gateway] Could not load chat history:", errMsg);
+        if (errMsg.includes("missing scope")) {
+          isScopeLimited = true;
+          console.log("[gateway] CLI mode detected — falling back to REST API for data loading");
+        }
       }
 
       // Load agents list (best-effort)
@@ -468,7 +501,37 @@ else:
         const filesList = await gw.filesList(agentIdForFiles);
         setFiles(filesList);
       } catch (e) {
-        console.warn("[gateway] Could not load agents/files:", e);
+        console.warn("[gateway] Could not load agents/files via gateway:", e);
+
+        // REST API fallback: list workspace files via exec
+        if (agent && isScopeLimited) {
+          try {
+            const fallbackToken = await getToken();
+            const listCmd = `python3 -c "
+import os,json
+d='/home/ubuntu/.openclaw/workspace'
+if not os.path.isdir(d):
+ print('[]')
+else:
+ files=[]
+ for f in os.listdir(d):
+  p=os.path.join(d,f)
+  if os.path.isfile(p):
+   files.append({'name':f,'size':os.path.getsize(p),'missing':False})
+ print(json.dumps(files))
+"`;
+            const listResp = await apiFetch<{ stdout?: string; output?: string }>(
+              `/agents/${agent.id}/exec`, fallbackToken,
+              { method: "POST", body: JSON.stringify({ command: listCmd }) }
+            );
+            const filesJson = (listResp.stdout ?? listResp.output ?? "[]").trim();
+            const parsedFiles = JSON.parse(filesJson) as WorkspaceFile[];
+            setFiles(parsedFiles);
+            console.log("[gateway] Loaded workspace files via REST fallback:", parsedFiles.length);
+          } catch (fallbackErr) {
+            console.warn("[gateway] REST fallback for files also failed:", fallbackErr);
+          }
+        }
       }
 
       // Load config (best-effort)
@@ -489,8 +552,28 @@ else:
         setConfig(cfg);
         setConfigSchema(schema);
       } catch (e) {
-        console.warn("[gateway] Could not load config:", e);
+        console.warn("[gateway] Could not load config via gateway:", e);
+
+        // REST API fallback: read openclaw.json via exec
+        if (agent && isScopeLimited) {
+          try {
+            const fallbackToken = await getToken();
+            const readCmd = `cat /home/ubuntu/.openclaw/openclaw.json 2>/dev/null || echo "{}"`;
+            const readResp = await apiFetch<{ stdout?: string; output?: string }>(
+              `/agents/${agent.id}/exec`, fallbackToken,
+              { method: "POST", body: JSON.stringify({ command: readCmd }) }
+            );
+            const configJson = (readResp.stdout ?? readResp.output ?? "{}").trim();
+            const parsedConfig = JSON.parse(configJson) as Record<string, unknown>;
+            setConfig(parsedConfig);
+            console.log("[gateway] Loaded config via REST fallback");
+          } catch (fallbackErr) {
+            console.warn("[gateway] REST fallback for config also failed:", fallbackErr);
+          }
+        }
       }
+
+      setScopeLimited(isScopeLimited);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("[gateway] Connection failed:", msg, e);
@@ -523,13 +606,28 @@ else:
     ]);
 
     try {
+      console.log("[gateway] Sending chat message...");
       await gw.chatSend(msg);
+      console.log("[gateway] chat.send acknowledged — waiting for streaming response");
     } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.error("[gateway] chat.send failed:", errMsg);
+
+      // Provide actionable error messages
+      let userMessage = errMsg;
+      if (errMsg.includes("missing scope")) {
+        userMessage = "Chat requires operator scope. The gateway may need reconfiguration — try restarting the agent.";
+      } else if (errMsg.includes("token_not_found") || errMsg.includes("401")) {
+        userMessage = "LLM API key is invalid. Reconnecting will auto-provision a new key.";
+      } else if (errMsg.includes("timed out")) {
+        userMessage = "The LLM response timed out. The model may be overloaded — try again.";
+      }
+
       setMessages((prev) => [
         ...prev,
         {
           role: "system",
-          content: `Error: ${e instanceof Error ? e.message : String(e)}`,
+          content: `Error: ${userMessage}`,
           timestamp: Date.now(),
         },
       ]);
@@ -540,26 +638,92 @@ else:
   const openFile = useCallback(
     async (name: string): Promise<string> => {
       const gw = gwRef.current;
-      if (!gw) throw new Error("Not connected");
-      return gw.fileGet(gwAgentId, name);
+      // Try gateway first, fall back to exec
+      if (gw && !scopeLimited) {
+        try {
+          return await gw.fileGet(gwAgentId, name);
+        } catch (e) {
+          console.warn("[gateway] fileGet failed, trying REST fallback:", e);
+        }
+      }
+      // REST API fallback via exec
+      if (!agent) throw new Error("No agent");
+      const token = await getToken();
+      const safeName = name.replace(/'/g, "\\'").replace(/\.\./g, "");
+      const cmd = `cat '/home/ubuntu/.openclaw/workspace/${safeName}' 2>&1`;
+      const resp = await apiFetch<{ stdout?: string; output?: string }>(
+        `/agents/${agent.id}/exec`, token,
+        { method: "POST", body: JSON.stringify({ command: cmd }) }
+      );
+      return resp.stdout ?? resp.output ?? "";
     },
-    [gwAgentId]
+    [gwAgentId, scopeLimited, agent, getToken]
   );
 
   const saveFile = useCallback(
     async (name: string, content: string) => {
       const gw = gwRef.current;
-      if (!gw) throw new Error("Not connected");
-      await gw.fileSet(gwAgentId, name, content);
+      // Try gateway first, fall back to exec
+      if (gw && !scopeLimited) {
+        try {
+          await gw.fileSet(gwAgentId, name, content);
+          return;
+        } catch (e) {
+          console.warn("[gateway] fileSet failed, trying REST fallback:", e);
+        }
+      }
+      // REST API fallback via exec
+      if (!agent) throw new Error("No agent");
+      const token = await getToken();
+      const safeName = name.replace(/'/g, "\\'").replace(/\.\./g, "");
+      // Base64 encode the content to avoid shell escaping issues
+      const b64 = btoa(unescape(encodeURIComponent(content)));
+      const cmd = `echo '${b64}' | base64 -d > '/home/ubuntu/.openclaw/workspace/${safeName}'`;
+      await apiFetch(
+        `/agents/${agent.id}/exec`, token,
+        { method: "POST", body: JSON.stringify({ command: cmd }) }
+      );
     },
-    [gwAgentId]
+    [gwAgentId, scopeLimited, agent, getToken]
   );
 
   const saveConfig = useCallback(async (patch: Record<string, unknown>) => {
     const gw = gwRef.current;
-    if (!gw) throw new Error("Not connected");
-    await gw.configPatch(patch);
-  }, []);
+    // Try gateway first
+    if (gw && !scopeLimited) {
+      try {
+        await gw.configPatch(patch);
+        return;
+      } catch (e) {
+        console.warn("[gateway] configPatch failed, trying REST fallback:", e);
+      }
+    }
+    // REST API fallback: merge patch into openclaw.json via exec
+    if (!agent) throw new Error("No agent");
+    const token = await getToken();
+    const cmd = `python3 -c "
+import json
+p='/home/ubuntu/.openclaw/openclaw.json'
+try:
+ c=json.load(open(p))
+except:
+ c={}
+patch=${JSON.stringify(patch).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}
+def deep_merge(base,over):
+ for k,v in over.items():
+  if isinstance(v,dict) and isinstance(base.get(k),dict):
+   deep_merge(base[k],v)
+  else:
+   base[k]=v
+deep_merge(c,patch)
+json.dump(c,open(p,'w'),indent=2)
+print('saved')
+"`;
+    await apiFetch(
+      `/agents/${agent.id}/exec`, token,
+      { method: "POST", body: JSON.stringify({ command: cmd }) }
+    );
+  }, [scopeLimited, agent, getToken]);
 
   return {
     messages,
@@ -569,6 +733,7 @@ else:
     sending,
     connected,
     error,
+    scopeLimited,
     files,
     config,
     configSchema,
