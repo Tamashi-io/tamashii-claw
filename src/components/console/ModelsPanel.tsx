@@ -60,11 +60,10 @@ export function ModelsPanel({ gateway, connected }: ModelsPanelProps) {
 
   const handleSetDefault = async (providerId: string, modelId: string) => {
     if (!gateway) return;
+    const fullId = providerId ? `${providerId}/${modelId}` : modelId;
     setSettingDefault(modelId);
     try {
-      await gateway.call("config.patch", {
-        patch: { default_model: `${providerId}/${modelId}` },
-      });
+      await gateway.configPatch({ defaultModel: fullId });
       setDefaultModel(modelId);
       await loadModels();
     } catch (err) {
@@ -79,14 +78,27 @@ export function ModelsPanel({ gateway, connected }: ModelsPanelProps) {
     setAddingProvider(true);
     setError(null);
     try {
-      await gateway.call("providers.upsert", {
-        providerId: newProviderId,
-        config: {
+      // Try dedicated RPC first, fall back to config.patch
+      try {
+        await gateway.call("providers.upsert", {
+          providerId: newProviderId,
+          config: {
+            api: newProviderApi,
+            baseUrl: newProviderUrl || undefined,
+            apiKey: newProviderKey || undefined,
+          },
+        });
+      } catch {
+        // Fall back: patch the providers section of the config
+        const providerConfig: Record<string, unknown> = {
           api: newProviderApi,
-          baseUrl: newProviderUrl || undefined,
-          apiKey: newProviderKey || undefined,
-        },
-      });
+        };
+        if (newProviderUrl) providerConfig.baseUrl = newProviderUrl;
+        if (newProviderKey) providerConfig.apiKey = newProviderKey;
+        await gateway.configPatch({
+          providers: { [newProviderId]: providerConfig },
+        });
+      }
       setShowAddProvider(false);
       setNewProviderId("");
       setNewProviderUrl("");
