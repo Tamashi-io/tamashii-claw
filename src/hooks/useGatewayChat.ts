@@ -277,46 +277,17 @@ else:
         console.warn("[gateway] Pre-flight config check failed:", e);
       }
 
-      // Diagnostic: test the LLM API endpoint directly to check if it responds
+      // Diagnostic: check OpenClaw agent version and recent error logs
       try {
         const diagToken = await getToken();
-        const diagCmd = `python3 -c "
-import json,urllib.request,urllib.error
-p='/home/ubuntu/.openclaw/openclaw.json'
-c=json.load(open(p))
-# Get default model provider config
-defs=c.get('agents',{}).get('defaults',{}).get('model',{})
-primary=defs.get('primary','')
-print('default model:',primary)
-if '/' in primary:
- pid,mid=primary.split('/',1)
- prov=c.get('models',{}).get('providers',{}).get(pid,{})
- base=prov.get('baseUrl','')
- key=prov.get('apiKey','')
- api=prov.get('api','')
- print(f'provider: {pid} api={api} base={base[:30]}...')
- # Test with minimal request
- url=base.rstrip('/')+'/v1/messages'
- body=json.dumps({'model':mid,'max_tokens':10,'messages':[{'role':'user','content':'hi'}]}).encode()
- req=urllib.request.Request(url,body,{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'})
- try:
-  resp=urllib.request.urlopen(req,timeout=15)
-  data=resp.read().decode()[:500]
-  print('API OK:',data[:300])
- except urllib.error.HTTPError as e:
-  print(f'API HTTP {e.code}:',e.read().decode()[:300])
- except Exception as e:
-  print(f'API error:',str(e)[:300])
-else:
- print('no default model set')
-"`;
+        const diagCmd = `openclaw --version 2>&1; echo "---"; journalctl -u openclaw --no-pager -n 30 --output=cat 2>/dev/null || tail -30 /home/ubuntu/.openclaw/logs/agent.log 2>/dev/null || echo "no logs found"`;
         const diagResp = await apiFetch<{ stdout?: string; output?: string }>(
           `/agents/${agent.id}/exec`, diagToken,
-          { method: "POST", body: JSON.stringify({ command: diagCmd, timeout: 30 }) }
+          { method: "POST", body: JSON.stringify({ command: diagCmd, timeout: 15 }) }
         );
-        console.log("[gateway] LLM API test:\n" + (diagResp.stdout ?? diagResp.output ?? ""));
+        console.log("[gateway] OpenClaw agent info:\n" + (diagResp.stdout ?? diagResp.output ?? ""));
       } catch (e) {
-        console.warn("[gateway] LLM API test failed:", e);
+        console.warn("[gateway] OpenClaw diagnostics failed:", e);
       }
 
       // With Ed25519 device identity, the gateway grants full operator scopes
