@@ -284,16 +284,29 @@ else:
 import json
 p='/home/ubuntu/.openclaw/openclaw.json'
 c=json.load(open(p))
-providers=c.get('models',{}).get('providers',{})
-for pid,pcfg in providers.items():
- api=pcfg.get('api','?')
- base=pcfg.get('baseUrl','?')
- key=pcfg.get('apiKey','')
- km=key[:8]+'...' if len(key)>12 else key
- models=list((pcfg.get('models',{}) or {}).keys())
- print(f'{pid}: api={api} base={base} key={km} models={models}')
-defaults=c.get('agents',{}).get('defaults',{}).get('model',{})
-print(f'default: {defaults.get(\"primary\",\"none\")}')
+# Redact long values (API keys) but show structure
+def redact(obj,depth=0):
+ if depth>5: return '...'
+ if isinstance(obj,dict):
+  return {k:redact(v,depth+1) for k,v in obj.items()}
+ if isinstance(obj,list):
+  return [redact(v,depth+1) for v in obj[:5]]
+ if isinstance(obj,str) and len(obj)>20:
+  return obj[:8]+'...'+obj[-4:]
+ return obj
+# Show top-level keys
+print('top-level keys:',list(c.keys()))
+# Show models section
+if 'models' in c:
+ print('models:',json.dumps(redact(c['models']),indent=1))
+else:
+ print('no models key')
+# Show agents.defaults
+defs=c.get('agents',{}).get('defaults',{})
+if defs:
+ print('agents.defaults:',json.dumps(redact(defs)))
+else:
+ print('no agents.defaults')
 "`;
         const diagResp = await apiFetch<{ stdout?: string; output?: string }>(
           `/agents/${agent.id}/exec`, diagToken,
