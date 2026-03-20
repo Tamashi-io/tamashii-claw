@@ -227,6 +227,23 @@ async function signDevicePayload(privateKey: string, payload: string): Promise<s
   return bytesToBase64Url(signature);
 }
 
+// ── Helpers ────────────────────────────────────────────────────────
+
+function deepMerge(base: Record<string, unknown>, over: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...base };
+  for (const [key, value] of Object.entries(over)) {
+    if (
+      value && typeof value === "object" && !Array.isArray(value) &&
+      result[key] && typeof result[key] === "object" && !Array.isArray(result[key])
+    ) {
+      result[key] = deepMerge(result[key] as Record<string, unknown>, value as Record<string, unknown>);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 // ── Gateway Client ─────────────────────────────────────────────────
 
 export class GatewayClient {
@@ -498,7 +515,11 @@ export class GatewayClient {
   }
 
   async configPatch(patch: Record<string, unknown>): Promise<void> {
-    await this.call("config.patch", { patch }, 30_000);
+    // Gateway expects { raw: string } — full config as JSON string.
+    // Read current config, deep merge the patch, and send the full result.
+    const current = await this.configGet();
+    const merged = deepMerge(current, patch);
+    await this.call("config.patch", { raw: JSON.stringify(merged, null, 2) }, 30_000);
   }
 
   async modelsList(): Promise<any[]> {
