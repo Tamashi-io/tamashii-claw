@@ -219,6 +219,7 @@ export function useGatewayChat(
 
       let gw: GatewayClient | null = null;
       let lastError = "";
+      let originFixAttempted = false;
 
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         if (attempt > 0) {
@@ -241,6 +242,40 @@ export function useGatewayChat(
           lastError = err instanceof Error ? err.message : String(err);
           console.warn(`[gateway] Attempt ${attempt + 1} failed:`, lastError);
           gw = null;
+
+          // Auto-fix: if origin rejected, exec a command to add our origin to config
+          if (lastError.includes("origin not allowed") && !originFixAttempted) {
+            originFixAttempted = true;
+            const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
+            if (browserOrigin && agent) {
+              console.log("[gateway] Auto-fixing origin config via exec...", browserOrigin);
+              setError("Configuring gateway origin access...");
+              try {
+                const fixToken = await getToken();
+                const script = `python3 -c "
+import json
+p = '/home/ubuntu/.openclaw/openclaw.json'
+with open(p) as f: c = json.load(f)
+c.setdefault('gateway',{})['mode'] = 'local'
+origins = c['gateway'].setdefault('controlUi',{}).get('allowedOrigins',[])
+if '${browserOrigin}' not in origins: origins.append('${browserOrigin}')
+if 'http://localhost:3000' not in origins: origins.append('http://localhost:3000')
+c['gateway']['controlUi']['allowedOrigins'] = origins
+with open(p,'w') as f: json.dump(c,f,indent=2)
+print('origin added')
+"`;
+                await apiFetch(`/agents/${agent.id}/exec`, fixToken, {
+                  method: "POST",
+                  body: JSON.stringify({ command: ["bash", "-c", script] }),
+                });
+                console.log("[gateway] Origin fix applied, waiting for gateway restart...");
+                // Wait for reef to restart gateway with new config
+                await new Promise((r) => setTimeout(r, 8_000));
+              } catch (fixErr) {
+                console.warn("[gateway] Origin auto-fix failed:", fixErr);
+              }
+            }
+          }
         }
       }
 
