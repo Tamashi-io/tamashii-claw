@@ -503,11 +503,24 @@ export class GatewayClient {
     });
   }
 
-  async configGet(): Promise<Record<string, unknown>> {
+  /** Raw config.get result including baseHash for optimistic concurrency */
+  private async configGetRaw(): Promise<{ config: Record<string, unknown>; baseHash?: string }> {
     const r = await this.call<any>("config.get");
-    if (r.parsed) return r.parsed;
-    if (r.raw) try { return JSON.parse(r.raw); } catch { /* */ }
-    return r.config ?? r;
+    const baseHash = r.hash ?? r.baseHash ?? undefined;
+    let config: Record<string, unknown>;
+    if (r.parsed) {
+      config = r.parsed;
+    } else if (r.raw) {
+      try { config = JSON.parse(r.raw); } catch { config = r.config ?? r; }
+    } else {
+      config = r.config ?? r;
+    }
+    return { config, baseHash };
+  }
+
+  async configGet(): Promise<Record<string, unknown>> {
+    const { config } = await this.configGetRaw();
+    return config;
   }
 
   async configSchema(): Promise<Record<string, unknown>> {
@@ -515,11 +528,13 @@ export class GatewayClient {
   }
 
   async configPatch(patch: Record<string, unknown>): Promise<void> {
-    // Gateway expects { raw: string } — full config as JSON string.
-    // Read current config, deep merge the patch, and send the full result.
-    const current = await this.configGet();
+    // Gateway uses optimistic concurrency: config.patch requires the baseHash
+    // from the last config.get response.
+    const { config: current, baseHash } = await this.configGetRaw();
     const merged = deepMerge(current, patch);
-    await this.call("config.patch", { raw: JSON.stringify(merged, null, 2) }, 30_000);
+    const params: Record<string, unknown> = { raw: JSON.stringify(merged, null, 2) };
+    if (baseHash) params.baseHash = baseHash;
+    await this.call("config.patch", params, 30_000);
   }
 
   async modelsList(): Promise<any[]> {
