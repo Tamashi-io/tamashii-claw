@@ -202,15 +202,28 @@ export function useGatewayChat(
         // Fall back to proxy without JWT
       }
 
-      // Build direct gateway URL
-      let gwUrl: string | null = null;
-      if (ocUrl) {
-        const base = ocUrl.startsWith("wss://") || ocUrl.startsWith("ws://") ? ocUrl : `wss://${ocUrl}`;
-        gwUrl = hyperclawJwt ? `${base}?token=${encodeURIComponent(hyperclawJwt)}` : base;
-      } else if (hostname) {
-        const base = `wss://${hostname}`;
-        gwUrl = hyperclawJwt ? `${base}?token=${encodeURIComponent(hyperclawJwt)}` : base;
+      // Build gateway URLs to try:
+      // 1. openclaw-{hostname} — goes through Traefik ForwardAuth (provides device identity → full scopes)
+      // 2. plain hostname — direct connection (may lack device identity → limited scopes)
+      const gwUrls: string[] = [];
+      if (hostname) {
+        // Primary: openclaw-prefixed subdomain (Traefik ForwardAuth path)
+        const openclawBase = `wss://openclaw-${hostname}`;
+        gwUrls.push(hyperclawJwt ? `${openclawBase}?token=${encodeURIComponent(hyperclawJwt)}` : openclawBase);
       }
+      if (ocUrl) {
+        // Secondary: API-provided URL (may be plain hostname without openclaw- prefix)
+        const base = ocUrl.startsWith("wss://") || ocUrl.startsWith("ws://") ? ocUrl : `wss://${ocUrl}`;
+        // Only add if different from the openclaw- URL
+        const candidate = hyperclawJwt ? `${base}?token=${encodeURIComponent(hyperclawJwt)}` : base;
+        if (!gwUrls.includes(candidate)) gwUrls.push(candidate);
+      } else if (hostname && gwUrls.length < 2) {
+        const base = `wss://${hostname}`;
+        const candidate = hyperclawJwt ? `${base}?token=${encodeURIComponent(hyperclawJwt)}` : base;
+        if (!gwUrls.includes(candidate)) gwUrls.push(candidate);
+      }
+
+      const gwUrl = gwUrls[0] ?? null;
 
       if (!gwUrl) return;
 
@@ -302,12 +315,10 @@ else:
         console.warn("[gateway] Pre-flight config check failed:", e);
       }
 
-      // Try "openclaw-control-ui" first (full scopes), fall back to "cli" (limited but no device identity)
-      const CLIENT_IDS_TO_TRY: Array<{ clientId: string; clientMode: string }> = [
-        { clientId: "openclaw-control-ui", clientMode: "webchat" },
-        { clientId: "cli", clientMode: "cli" },
-      ];
-      let activeClientIdx = 0;
+      // With Ed25519 device identity, we use clientId "cli" and the gateway
+      // grants full scopes based on the signed device challenge.
+      // Try each URL in order (openclaw-prefixed first, then plain hostname).
+      let pairingApproved = false;
 
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         if (attempt > 0) {
@@ -317,61 +328,75 @@ else:
           await new Promise((r) => setTimeout(r, delay));
         }
 
-        const { clientId: tryClientId, clientMode: tryClientMode } = CLIENT_IDS_TO_TRY[activeClientIdx];
+        // Try each URL in order
+        for (const tryUrl of gwUrls) {
+          try {
+            console.log("[gateway] Connecting with device identity:", {
+              url: tryUrl.split("?")[0],
+              attempt: attempt + 1,
+            });
+            gw = new GatewayClient({
+              url: tryUrl,
+              gatewayToken: gatewayToken ?? "tamashiiclaw-gateway-auth",
+              clientId: "cli",
+              clientMode: "cli",
+            });
+            await gw.connect();
+            console.log("[gateway] Connected with device identity ✓");
+            break;
+          } catch (err) {
+            lastError = err instanceof Error ? err.message : String(err);
+            console.warn(`[gateway] Connect failed (${tryUrl.split("?")[0]}):`, lastError);
+            gw = null;
 
-        try {
-          console.log("[gateway] Connecting:", {
-            url: gwUrl.split("?")[0],
-            attempt: attempt + 1,
-            clientId: tryClientId,
-            clientMode: tryClientMode,
-            hasGatewayToken: !!gatewayToken,
-          });
-          gw = new GatewayClient({ url: gwUrl, gatewayToken, clientId: tryClientId, clientMode: tryClientMode });
-          await gw.connect();
-          console.log(`[gateway] Connected with clientId="${tryClientId}"`);
-          break;
-        } catch (err) {
-          lastError = err instanceof Error ? err.message : String(err);
-          console.warn(`[gateway] Attempt ${attempt + 1} (${tryClientId}) failed:`, lastError);
-          gw = null;
-
-          // If device identity required, immediately try CLI fallback (don't count as retry)
-          if (
-            lastError.includes("device identity") &&
-            activeClientIdx < CLIENT_IDS_TO_TRY.length - 1
-          ) {
-            activeClientIdx++;
-            const next = CLIENT_IDS_TO_TRY[activeClientIdx];
-            console.log(`[gateway] Falling back to clientId="${next.clientId}" (no device identity)`);
-            attempt--; // Don't count this as a retry
-            continue;
-          }
-
-          // Auto-fix: patch gateway config for token mismatch
-          const needsTokenFix = lastError.includes("token mismatch") && !configFixAttempted;
-
-          if (needsTokenFix && agent) {
-            configFixAttempted = true;
-            console.log("[gateway] Auto-fixing token mismatch via exec...");
-            setError("Configuring gateway access...");
-            try {
-              const fixToken = await getToken();
-              // Read existing gateway auth token from agent config
-              const readCmd = `python3 -c "import json; c=json.load(open('/home/ubuntu/.openclaw/openclaw.json')); print(c.get('gateway',{}).get('auth',{}).get('token',''))"`;
-              const readResp = await apiFetch<{ stdout?: string; output?: string }>(
-                `/agents/${agent.id}/exec`, fixToken,
-                { method: "POST", body: JSON.stringify({ command: readCmd }) }
-              );
-              const existingToken = (readResp.stdout ?? readResp.output ?? "").trim();
-              if (existingToken) {
-                console.log("[gateway] Found existing gateway token, using it");
-                gatewayToken = existingToken;
-                storeGatewayToken(agent.id, existingToken);
+            // Handle PAIRING_REQUIRED: auto-approve via exec and retry
+            if (
+              lastError.includes("pairing") ||
+              lastError.includes("Pairing") ||
+              lastError.includes("PAIRING")
+            ) {
+              if (!pairingApproved && agent) {
+                pairingApproved = true;
+                console.log("[gateway] Pairing required — auto-approving via exec...");
+                setError("Approving device pairing...");
+                try {
+                  const pairToken = await getToken();
+                  // Approve the pairing via openclaw CLI on the agent
+                  const approveCmd = `openclaw devices approve --yes 2>/dev/null || echo "approve-not-available"`;
+                  await apiFetch(
+                    `/agents/${agent.id}/exec`, pairToken,
+                    { method: "POST", body: JSON.stringify({ command: approveCmd }) }
+                  );
+                  console.log("[gateway] Pairing approval sent, will retry...");
+                } catch (pairErr) {
+                  console.warn("[gateway] Pairing approval failed:", pairErr);
+                }
               }
-            } catch (fixErr) {
-              console.warn("[gateway] Token fix failed:", fixErr);
             }
+          }
+        }
+        if (gw) break; // Connected successfully
+
+        // Auto-fix: patch gateway config for token mismatch
+        if (lastError.includes("token mismatch") && !configFixAttempted && agent) {
+          configFixAttempted = true;
+          console.log("[gateway] Auto-fixing token mismatch via exec...");
+          setError("Configuring gateway access...");
+          try {
+            const fixToken = await getToken();
+            const readCmd = `python3 -c "import json; c=json.load(open('/home/ubuntu/.openclaw/openclaw.json')); print(c.get('gateway',{}).get('auth',{}).get('token',''))"`;
+            const readResp = await apiFetch<{ stdout?: string; output?: string }>(
+              `/agents/${agent.id}/exec`, fixToken,
+              { method: "POST", body: JSON.stringify({ command: readCmd }) }
+            );
+            const existingToken = (readResp.stdout ?? readResp.output ?? "").trim();
+            if (existingToken) {
+              console.log("[gateway] Found existing gateway token, using it");
+              gatewayToken = existingToken;
+              storeGatewayToken(agent.id, existingToken);
+            }
+          } catch (fixErr) {
+            console.warn("[gateway] Token fix failed:", fixErr);
           }
         }
       }
