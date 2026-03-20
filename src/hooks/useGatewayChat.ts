@@ -152,6 +152,7 @@ export function useGatewayChat(
   getToken: () => Promise<string>
 ) {
   const gwRef = useRef<GatewayClient | null>(null);
+  const intentionalCloseRef = useRef(false);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scopeLimited, setScopeLimited] = useState(false);
@@ -473,6 +474,35 @@ else:
         }
       });
 
+      // Auto-reconnect on gateway restart (close code 1012) or unexpected disconnect
+      gw.onClose((code, reason) => {
+        console.log(`[gateway] Close handler fired: code=${code} reason="${reason}"`);
+        setConnected(false);
+        gwRef.current = null;
+
+        // Skip reconnect if this was an intentional close (component unmount / agent change)
+        if (intentionalCloseRef.current) {
+          console.log("[gateway] Intentional close — no reconnect");
+          return;
+        }
+
+        // 1012 = service restart (gateway reloading config)
+        // 1006 = abnormal closure (network blip)
+        // 1001 = going away
+        // Don't reconnect on 1000 (normal close) — that's an intentional disconnect
+        if (code === 1012 || code === 1006 || code === 1001) {
+          const delay = code === 1012 ? 2000 : 5000;
+          console.log(`[gateway] Auto-reconnecting in ${delay / 1000}s...`);
+          setError("Gateway restarting — reconnecting...");
+          setTimeout(() => {
+            console.log("[gateway] Triggering reconnect...");
+            connectGateway();
+          }, delay);
+        } else {
+          setError(`Gateway disconnected (code ${code})`);
+        }
+      });
+
       gwRef.current = gw;
       setConnected(true);
       setError(null);
@@ -588,10 +618,12 @@ else:
   }, [agent, getToken]);
 
   useEffect(() => {
+    intentionalCloseRef.current = false;
     if (agent?.state === "RUNNING" && !connected) {
       connectGateway();
     }
     return () => {
+      intentionalCloseRef.current = true;
       gwRef.current?.close();
       gwRef.current = null;
       setConnected(false);

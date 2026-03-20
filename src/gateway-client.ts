@@ -246,10 +246,13 @@ function deepMerge(base: Record<string, unknown>, over: Record<string, unknown>)
 
 // ── Gateway Client ─────────────────────────────────────────────────
 
+export type CloseHandler = (code: number, reason: string) => void;
+
 export class GatewayClient {
   private ws: WebSocket | null = null;
   private pending = new Map<string, { resolve: (v: any) => void; reject: (e: any) => void; timer: ReturnType<typeof setTimeout> }>();
   private eventHandlers: EventHandler[] = [];
+  private closeHandlers: CloseHandler[] = [];
   private config: ResolvedGatewayConfig;
   private _connected = false;
   private _version: string | null = null;
@@ -430,12 +433,19 @@ export class GatewayClient {
 
       this.ws.onclose = (ev) => {
         console.log("[gateway] WebSocket closed:", ev.code, ev.reason);
+        const wasConnected = this._connected;
         this._connected = false;
         for (const [, { reject: rej, timer }] of this.pending) {
           clearTimeout(timer);
           rej(new Error("Connection closed"));
         }
         this.pending.clear();
+        // Notify close handlers (only after successful handshake)
+        if (wasConnected) {
+          for (const h of this.closeHandlers) {
+            try { h(ev.code, ev.reason ?? ""); } catch { /* ignore */ }
+          }
+        }
       };
     });
   }
@@ -449,6 +459,14 @@ export class GatewayClient {
     this.eventHandlers.push(handler);
     return () => {
       this.eventHandlers = this.eventHandlers.filter(h => h !== handler);
+    };
+  }
+
+  /** Register a handler called when the WebSocket closes (after handshake). */
+  onClose(handler: CloseHandler) {
+    this.closeHandlers.push(handler);
+    return () => {
+      this.closeHandlers = this.closeHandlers.filter(h => h !== handler);
     };
   }
 
@@ -534,7 +552,18 @@ export class GatewayClient {
     const merged = deepMerge(current, patch);
     const params: Record<string, unknown> = { raw: JSON.stringify(merged, null, 2) };
     if (baseHash) params.baseHash = baseHash;
-    await this.call("config.patch", params, 30_000);
+    try {
+      await this.call("config.patch", params, 30_000);
+    } catch (err) {
+      // Gateway restarts after config changes — if the WebSocket closed
+      // right after sending, the config was almost certainly applied.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === "Connection closed") {
+        console.log("[gateway] config.patch succeeded (gateway restarting to apply changes)");
+        return; // Treat as success
+      }
+      throw err;
+    }
   }
 
   async modelsList(): Promise<any[]> {

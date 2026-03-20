@@ -66,6 +66,11 @@ export function ChannelsPanel({ gateway, connected }: ChannelsPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
+  // Reset loaded flag when gateway instance changes (reconnect creates a new one)
+  useEffect(() => {
+    setLoaded(false);
+  }, [gateway]);
+
   // Load existing channel configs from gateway config
   useEffect(() => {
     if (!gateway || !connected || loaded) return;
