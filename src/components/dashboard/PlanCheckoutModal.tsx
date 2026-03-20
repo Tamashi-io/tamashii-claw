@@ -148,8 +148,8 @@ export function PlanCheckoutModal({
       console.log("[checkout] Starting server-side subscribe for plan:", plan.id);
 
       // Use server-side subscribe endpoint (operator wallet signs x402 payment)
-      // Send plan price in USDC 6-decimal units (e.g. $25 = 25000000)
-      const amountMicroUsdc = String(plan.price * 1_000_000);
+      // Amount is determined by HyperClaw's x402 server — we display our price
+      // but the actual USDC charge is whatever HyperClaw's plan costs.
       const result = await apiFetch<{
         ok?: boolean;
         key?: string;
@@ -158,7 +158,7 @@ export function PlanCheckoutModal({
         duration_days?: number;
       }>(`/x402/subscribe/${plan.id}`, token, {
         method: "POST",
-        body: JSON.stringify({ amount: amountMicroUsdc }),
+        body: JSON.stringify({}),
       });
       console.log("[checkout] Subscribe result:", {
         ok: result.ok,
