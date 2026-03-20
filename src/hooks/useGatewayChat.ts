@@ -222,29 +222,12 @@ export function useGatewayChat(
       let lastError = "";
       let configFixAttempted = false;
 
-      // Pre-flight: ensure gateway config is correct (mode=local, clean invalid fields, origins)
-      // AND provision a valid LiteLLM API key for inference
+      // Pre-flight: ensure gateway config allows our frontend to connect
+      // (mode=local, allowed origins, auth token). Does NOT touch model/provider keys.
       try {
         const prefixToken = await getToken();
         const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
 
-        // 1) Create a fresh LiteLLM inference key for this agent
-        let inferenceKey: string | null = null;
-        try {
-          const keyResp = await apiFetch<{ api_key?: string; key?: string }>(
-            `/keys`, prefixToken,
-            { method: "POST", body: JSON.stringify({ name: `agent-${agent.id.slice(0, 8)}` }) }
-          );
-          inferenceKey = keyResp.api_key ?? keyResp.key ?? null;
-          if (inferenceKey) {
-            console.log("[gateway] Provisioned inference key for agent");
-          }
-        } catch (e) {
-          console.warn("[gateway] Could not provision inference key:", e);
-        }
-
-        // 2) Patch openclaw.json: gateway config + inject API key into all providers
-        const keyEscaped = inferenceKey ? inferenceKey.replace(/'/g, "\\'") : "";
         const preflightCmd = `python3 -c "
 import json,sys
 p='/home/ubuntu/.openclaw/openclaw.json'
@@ -272,15 +255,6 @@ if changed:
  rt=gw.setdefault('remote',{})
  if not rt.get('token'):
   rt['token']=auth.get('token','tamashiiclaw-gateway-auth')
-key='${keyEscaped}'
-if key:
- for name,prov in c.get('models',{}).get('providers',{}).items():
-  if isinstance(prov,dict):
-   prov['apiKey']=key; changed=True
- defs=c.get('agents',{}).get('defaults',{})
- for k2,v in defs.items():
-  if isinstance(v,dict) and 'remote' in v and isinstance(v['remote'],dict):
-   v['remote']['apiKey']=key; changed=True
 if changed:
  json.dump(c,open(p,'w'),indent=2)
  print('fixed')
