@@ -52,7 +52,7 @@ export class GatewayClient {
   constructor(config: GatewayConfig) {
     this.config = {
       gatewayToken: "tamashiiclaw-gateway-auth",
-      clientId: "tamashiiclaw",
+      clientId: "openclaw-control-ui",
       clientMode: "cli",
       ...config,
     };
