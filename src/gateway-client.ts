@@ -53,7 +53,7 @@ export class GatewayClient {
     this.config = {
       gatewayToken: "tamashiiclaw-gateway-auth",
       clientId: "openclaw-control-ui",
-      clientMode: "ui",
+      clientMode: "webchat",
       ...config,
     };
   }
