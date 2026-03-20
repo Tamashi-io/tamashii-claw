@@ -243,37 +243,41 @@ export function useGatewayChat(
           console.warn(`[gateway] Attempt ${attempt + 1} failed:`, lastError);
           gw = null;
 
-          // Auto-fix: if origin rejected, exec a command to add our origin to config
-          if (lastError.includes("origin not allowed") && !originFixAttempted) {
+          // Auto-fix: patch gateway config for origin / token / mode issues
+          const needsOriginFix = lastError.includes("origin not allowed");
+          const needsTokenFix = lastError.includes("token mismatch");
+          const needsGatewayFix = (needsOriginFix || needsTokenFix) && !originFixAttempted;
+
+          if (needsGatewayFix && agent) {
             originFixAttempted = true;
             const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
-            if (browserOrigin && agent) {
-              console.log("[gateway] Auto-fixing origin config via exec...", browserOrigin);
-              setError("Configuring gateway origin access...");
-              try {
-                const fixToken = await getToken();
-                const script = `python3 -c "
+            const gwToken = "tamashiiclaw-gateway-auth";
+            console.log("[gateway] Auto-fixing gateway config via exec...", { browserOrigin, needsOriginFix, needsTokenFix });
+            setError("Configuring gateway access...");
+            try {
+              const fixToken = await getToken();
+              const script = `python3 -c "
 import json
 p = '/home/ubuntu/.openclaw/openclaw.json'
 with open(p) as f: c = json.load(f)
-c.setdefault('gateway',{})['mode'] = 'local'
-origins = c['gateway'].setdefault('controlUi',{}).get('allowedOrigins',[])
-if '${browserOrigin}' not in origins: origins.append('${browserOrigin}')
-if 'http://localhost:3000' not in origins: origins.append('http://localhost:3000')
-c['gateway']['controlUi']['allowedOrigins'] = origins
-with open(p,'w') as f: json.dump(c,f,indent=2)
-print('origin added')
+gw = c.setdefault('gateway', {})
+gw['mode'] = 'local'
+origins = gw.setdefault('controlUi', {}).get('allowedOrigins', [])
+for o in ['${browserOrigin}', 'http://localhost:3000']:
+    if o and o not in origins: origins.append(o)
+gw['controlUi']['allowedOrigins'] = origins
+gw.setdefault('auth', {})['token'] = '${gwToken}'
+with open(p, 'w') as f: json.dump(c, f, indent=2)
+print('gateway config patched')
 "`;
-                await apiFetch(`/agents/${agent.id}/exec`, fixToken, {
-                  method: "POST",
-                  body: JSON.stringify({ command: ["bash", "-c", script] }),
-                });
-                console.log("[gateway] Origin fix applied, waiting for gateway restart...");
-                // Wait for reef to restart gateway with new config
-                await new Promise((r) => setTimeout(r, 8_000));
-              } catch (fixErr) {
-                console.warn("[gateway] Origin auto-fix failed:", fixErr);
-              }
+              await apiFetch(`/agents/${agent.id}/exec`, fixToken, {
+                method: "POST",
+                body: JSON.stringify({ command: ["bash", "-c", script] }),
+              });
+              console.log("[gateway] Config fix applied, waiting for gateway restart...");
+              await new Promise((r) => setTimeout(r, 8_000));
+            } catch (fixErr) {
+              console.warn("[gateway] Auto-fix failed:", fixErr);
             }
           }
         }
