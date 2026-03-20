@@ -219,7 +219,58 @@ export function useGatewayChat(
 
       let gw: GatewayClient | null = null;
       let lastError = "";
-      let originFixAttempted = false;
+      let configFixAttempted = false;
+
+      // Pre-flight: ensure gateway config is correct (mode=local, clean invalid fields, origins)
+      try {
+        const prefixToken = await getToken();
+        const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
+        const preflightCmd = `python3 -c "
+import json,sys
+p='/home/ubuntu/.openclaw/openclaw.json'
+try:
+ c=json.load(open(p))
+except:
+ sys.exit(0)
+changed=False
+gw=c.setdefault('gateway',{})
+if gw.get('mode')!='local':
+ gw['mode']='local'; changed=True
+for k in ['requireDeviceIdentity']:
+ if k in gw: gw.pop(k); changed=True
+ if k in gw.get('auth',{}): gw['auth'].pop(k); changed=True
+ if k in gw.get('controlUi',{}): gw['controlUi'].pop(k); changed=True
+ui=gw.setdefault('controlUi',{})
+o=ui.get('allowedOrigins',[])
+for x in ['${browserOrigin}','http://localhost:3000']:
+ if x and x not in o: o.append(x); changed=True
+if changed:
+ ui['allowedOrigins']=o
+ auth=gw.setdefault('auth',{})
+ if not auth.get('token'):
+  auth['mode']='token'; auth['token']='tamashiiclaw-gateway-auth'
+ rt=gw.setdefault('remote',{})
+ if not rt.get('token'):
+  rt['token']=auth.get('token','tamashiiclaw-gateway-auth')
+ json.dump(c,open(p,'w'),indent=2)
+ print('fixed')
+else:
+ print('ok')
+"`;
+        const preResp = await apiFetch<{ stdout?: string; output?: string }>(
+          `/agents/${agent.id}/exec`, prefixToken,
+          { method: "POST", body: JSON.stringify({ command: preflightCmd }) }
+        );
+        const preResult = (preResp.stdout ?? preResp.output ?? "").trim();
+        if (preResult === "fixed") {
+          console.log("[gateway] Pre-flight config fix applied, waiting for gateway restart...");
+          await new Promise((r) => setTimeout(r, 10_000));
+        } else {
+          console.log("[gateway] Pre-flight config check:", preResult);
+        }
+      } catch (e) {
+        console.warn("[gateway] Pre-flight config check failed:", e);
+      }
 
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         if (attempt > 0) {
@@ -243,68 +294,29 @@ export function useGatewayChat(
           console.warn(`[gateway] Attempt ${attempt + 1} failed:`, lastError);
           gw = null;
 
-          // Auto-fix: patch gateway config for origin / token / mode / identity issues
-          const needsOriginFix = lastError.includes("origin not allowed");
-          const needsTokenFix = lastError.includes("token mismatch");
-          const needsIdentityFix = lastError.includes("device identity");
-          const needsGatewayFix = (needsOriginFix || needsTokenFix || needsIdentityFix) && !originFixAttempted;
+          // Auto-fix: patch gateway config for token mismatch
+          const needsTokenFix = lastError.includes("token mismatch") && !configFixAttempted;
 
-          if (needsGatewayFix && agent) {
-            originFixAttempted = true;
-            const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
-            console.log("[gateway] Auto-fixing gateway config via exec...", { browserOrigin, needsOriginFix, needsTokenFix, needsIdentityFix });
+          if (needsTokenFix && agent) {
+            configFixAttempted = true;
+            console.log("[gateway] Auto-fixing token mismatch via exec...");
             setError("Configuring gateway access...");
             try {
               const fixToken = await getToken();
-
-              if (needsTokenFix) {
-                // Read existing gateway auth token from agent config
-                try {
-                  const readCmd = `python3 -c "import json; c=json.load(open('/home/ubuntu/.openclaw/openclaw.json')); print(c.get('gateway',{}).get('auth',{}).get('token',''))"`;
-                  const readResp = await apiFetch<{ stdout?: string; output?: string }>(
-                    `/agents/${agent.id}/exec`, fixToken,
-                    { method: "POST", body: JSON.stringify({ command: readCmd }) }
-                  );
-                  const existingToken = (readResp.stdout ?? readResp.output ?? "").trim();
-                  if (existingToken) {
-                    console.log("[gateway] Found existing gateway token, using it");
-                    gatewayToken = existingToken;
-                    storeGatewayToken(agent.id, existingToken);
-                  }
-                } catch {
-                  console.warn("[gateway] Could not read gateway token from config");
-                }
-              }
-
-              if (needsOriginFix || needsIdentityFix) {
-                // Patch config: allowed origins + disable device identity requirement
-                const patchCmd = `python3 -c "
-import json
-p='/home/ubuntu/.openclaw/openclaw.json'
-c=json.load(open(p))
-gw=c.setdefault('gateway',{})
-gw['mode']='local'
-auth=gw.setdefault('auth',{})
-auth['mode']='token'
-auth['requireDeviceIdentity']=False
-ui=gw.setdefault('controlUi',{})
-ui['requireDeviceIdentity']=False
-o=ui.get('allowedOrigins',[])
-for x in ['${browserOrigin}','http://localhost:3000']:
- if x and x not in o: o.append(x)
-ui['allowedOrigins']=o
-json.dump(c,open(p,'w'),indent=2)
-print('ok')
-"`;
-                await apiFetch(`/agents/${agent.id}/exec`, fixToken, {
-                  method: "POST",
-                  body: JSON.stringify({ command: patchCmd }),
-                });
-                console.log("[gateway] Config fix applied, waiting for gateway restart...");
-                await new Promise((r) => setTimeout(r, 8_000));
+              // Read existing gateway auth token from agent config
+              const readCmd = `python3 -c "import json; c=json.load(open('/home/ubuntu/.openclaw/openclaw.json')); print(c.get('gateway',{}).get('auth',{}).get('token',''))"`;
+              const readResp = await apiFetch<{ stdout?: string; output?: string }>(
+                `/agents/${agent.id}/exec`, fixToken,
+                { method: "POST", body: JSON.stringify({ command: readCmd }) }
+              );
+              const existingToken = (readResp.stdout ?? readResp.output ?? "").trim();
+              if (existingToken) {
+                console.log("[gateway] Found existing gateway token, using it");
+                gatewayToken = existingToken;
+                storeGatewayToken(agent.id, existingToken);
               }
             } catch (fixErr) {
-              console.warn("[gateway] Auto-fix failed:", fixErr);
+              console.warn("[gateway] Token fix failed:", fixErr);
             }
           }
         }
@@ -405,36 +417,51 @@ print('ok')
       setConnected(true);
       setError(null);
 
-      const history = await gw.chatHistory("main", 200);
-      const hydrated = history
-        .map((message) => normalizeHistoryMessage(message))
-        .filter((message): message is ChatMessage => message !== null);
-      setMessages(hydrated.length > 0 ? hydrated : []);
-
-      const agents = await gw.agentsList();
-      if (agents.length > 0) {
-        setGwAgentId(agents[0].id);
+      // Load chat history (best-effort — scope may be limited in CLI mode)
+      try {
+        const history = await gw.chatHistory("main", 200);
+        const hydrated = history
+          .map((message) => normalizeHistoryMessage(message))
+          .filter((message): message is ChatMessage => message !== null);
+        setMessages(hydrated.length > 0 ? hydrated : []);
+      } catch (e) {
+        console.warn("[gateway] Could not load chat history:", e);
       }
 
-      const agentIdForFiles = agents.length > 0 ? agents[0].id : "main";
-      const filesList = await gw.filesList(agentIdForFiles);
-      setFiles(filesList);
+      // Load agents list (best-effort)
+      try {
+        const agents = await gw.agentsList();
+        if (agents.length > 0) {
+          setGwAgentId(agents[0].id);
+        }
 
-      const [cfg, schemaResp] = await Promise.all([
-        gw.configGet(),
-        gw.configSchema(),
-      ]);
-      const schema = (
-        schemaResp &&
-        typeof schemaResp === "object" &&
-        "schema" in schemaResp &&
-        schemaResp.schema &&
-        typeof schemaResp.schema === "object"
-      )
-        ? (schemaResp.schema as Record<string, unknown>)
-        : (schemaResp as Record<string, unknown>);
-      setConfig(cfg);
-      setConfigSchema(schema);
+        const agentIdForFiles = agents.length > 0 ? agents[0].id : "main";
+        const filesList = await gw.filesList(agentIdForFiles);
+        setFiles(filesList);
+      } catch (e) {
+        console.warn("[gateway] Could not load agents/files:", e);
+      }
+
+      // Load config (best-effort)
+      try {
+        const [cfg, schemaResp] = await Promise.all([
+          gw.configGet(),
+          gw.configSchema(),
+        ]);
+        const schema = (
+          schemaResp &&
+          typeof schemaResp === "object" &&
+          "schema" in schemaResp &&
+          schemaResp.schema &&
+          typeof schemaResp.schema === "object"
+        )
+          ? (schemaResp.schema as Record<string, unknown>)
+          : (schemaResp as Record<string, unknown>);
+        setConfig(cfg);
+        setConfigSchema(schema);
+      } catch (e) {
+        console.warn("[gateway] Could not load config:", e);
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("[gateway] Connection failed:", msg, e);
