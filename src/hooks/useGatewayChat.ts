@@ -277,6 +277,33 @@ else:
         console.warn("[gateway] Pre-flight config check failed:", e);
       }
 
+      // Diagnostic: dump model provider config so we can debug LLM errors
+      try {
+        const diagToken = await getToken();
+        const diagCmd = `python3 -c "
+import json
+p='/home/ubuntu/.openclaw/openclaw.json'
+c=json.load(open(p))
+providers=c.get('models',{}).get('providers',{})
+for pid,pcfg in providers.items():
+ api=pcfg.get('api','?')
+ base=pcfg.get('baseUrl','?')
+ key=pcfg.get('apiKey','')
+ km=key[:8]+'...' if len(key)>12 else key
+ models=list((pcfg.get('models',{}) or {}).keys())
+ print(f'{pid}: api={api} base={base} key={km} models={models}')
+defaults=c.get('agents',{}).get('defaults',{}).get('model',{})
+print(f'default: {defaults.get(\"primary\",\"none\")}')
+"`;
+        const diagResp = await apiFetch<{ stdout?: string; output?: string }>(
+          `/agents/${agent.id}/exec`, diagToken,
+          { method: "POST", body: JSON.stringify({ command: diagCmd }) }
+        );
+        console.log("[gateway] Model provider diagnostics:\n" + (diagResp.stdout ?? diagResp.output ?? ""));
+      } catch (e) {
+        console.warn("[gateway] Model diagnostics failed:", e);
+      }
+
       // With Ed25519 device identity, the gateway grants full operator scopes
       // based on the signed device challenge-response.
       let pairingApproved = false;
