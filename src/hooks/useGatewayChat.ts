@@ -277,44 +277,46 @@ else:
         console.warn("[gateway] Pre-flight config check failed:", e);
       }
 
-      // Diagnostic: dump model provider config so we can debug LLM errors
+      // Diagnostic: test the LLM API endpoint directly to check if it responds
       try {
         const diagToken = await getToken();
         const diagCmd = `python3 -c "
-import json
+import json,urllib.request,urllib.error
 p='/home/ubuntu/.openclaw/openclaw.json'
 c=json.load(open(p))
-# Redact long values (API keys) but show structure
-def redact(obj,depth=0):
- if depth>5: return '...'
- if isinstance(obj,dict):
-  return {k:redact(v,depth+1) for k,v in obj.items()}
- if isinstance(obj,list):
-  return [redact(v,depth+1) for v in obj[:5]]
- if isinstance(obj,str) and len(obj)>20:
-  return obj[:8]+'...'+obj[-4:]
- return obj
-# Show top-level keys
-print('top-level keys:',list(c.keys()))
-# Show models section
-if 'models' in c:
- print('models:',json.dumps(redact(c['models']),indent=1))
+# Get default model provider config
+defs=c.get('agents',{}).get('defaults',{}).get('model',{})
+primary=defs.get('primary','')
+print('default model:',primary)
+if '/' in primary:
+ pid,mid=primary.split('/',1)
+ prov=c.get('models',{}).get('providers',{}).get(pid,{})
+ base=prov.get('baseUrl','')
+ key=prov.get('apiKey','')
+ api=prov.get('api','')
+ print(f'provider: {pid} api={api} base={base[:30]}...')
+ # Test with minimal request
+ url=base.rstrip('/')+'/v1/messages'
+ body=json.dumps({'model':mid,'max_tokens':10,'messages':[{'role':'user','content':'hi'}]}).encode()
+ req=urllib.request.Request(url,body,{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'})
+ try:
+  resp=urllib.request.urlopen(req,timeout=15)
+  data=resp.read().decode()[:500]
+  print('API OK:',data[:300])
+ except urllib.error.HTTPError as e:
+  print(f'API HTTP {e.code}:',e.read().decode()[:300])
+ except Exception as e:
+  print(f'API error:',str(e)[:300])
 else:
- print('no models key')
-# Show agents.defaults
-defs=c.get('agents',{}).get('defaults',{})
-if defs:
- print('agents.defaults:',json.dumps(redact(defs)))
-else:
- print('no agents.defaults')
+ print('no default model set')
 "`;
         const diagResp = await apiFetch<{ stdout?: string; output?: string }>(
           `/agents/${agent.id}/exec`, diagToken,
-          { method: "POST", body: JSON.stringify({ command: diagCmd }) }
+          { method: "POST", body: JSON.stringify({ command: diagCmd, timeout: 30 }) }
         );
-        console.log("[gateway] Model provider diagnostics:\n" + (diagResp.stdout ?? diagResp.output ?? ""));
+        console.log("[gateway] LLM API test:\n" + (diagResp.stdout ?? diagResp.output ?? ""));
       } catch (e) {
-        console.warn("[gateway] Model diagnostics failed:", e);
+        console.warn("[gateway] LLM API test failed:", e);
       }
 
       // With Ed25519 device identity, the gateway grants full operator scopes
