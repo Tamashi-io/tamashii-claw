@@ -423,6 +423,23 @@ else:
 
           if (chatPayload.state === "final") {
             setSending(false);
+          } else if (chatPayload.state === "error") {
+            setSending(false);
+            const errorMsg =
+              (chatPayload.errorMessage as string) ??
+              (chatPayload.error as string) ??
+              "Agent encountered an error";
+            setMessages((prev) => [
+              ...prev,
+              { role: "system", content: `Error: ${errorMsg}`, timestamp: Date.now() },
+            ]);
+          }
+        } else if (event === "agent") {
+          // Handle agent lifecycle errors
+          const agentPayload = payload as Record<string, unknown>;
+          const data = agentPayload.data as Record<string, unknown> | undefined;
+          if (data?.phase === "error") {
+            console.error("[gateway] Agent error:", data.error);
           }
         } else if (event === "chat.content") {
           setMessages((prev) => {
