@@ -622,8 +622,8 @@ else:
 
     try {
       console.log("[gateway] Sending chat message...");
-      await gw.chatSend(msg);
-      console.log("[gateway] chat.send acknowledged — waiting for streaming response");
+      const sendResult = await gw.chatSend(msg);
+      console.log("[gateway] chat.send acknowledged:", JSON.stringify(sendResult)?.slice(0, 300));
     } catch (e: unknown) {
       const errMsg = e instanceof Error ? e.message : String(e);
       console.error("[gateway] chat.send failed:", errMsg);

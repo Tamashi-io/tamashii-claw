@@ -411,7 +411,8 @@ export class GatewayClient {
         reject(new Error("WebSocket error"));
       };
 
-      this.ws.onclose = () => {
+      this.ws.onclose = (ev) => {
+        console.log("[gateway] WebSocket closed:", ev.code, ev.reason);
         this._connected = false;
         for (const [, { reject: rej, timer }] of this.pending) {
           clearTimeout(timer);
@@ -439,6 +440,13 @@ export class GatewayClient {
   }
 
   private handleMessage(msg: any) {
+    // Debug: log all incoming messages
+    if (msg.type === "event") {
+      console.log("[gateway] ← event:", msg.event, msg.payload ? JSON.stringify(msg.payload).slice(0, 200) : "");
+    } else {
+      console.log("[gateway] ← msg:", msg.type, msg.id?.slice(0, 8), msg.ok, msg.error ? JSON.stringify(msg.error).slice(0, 200) : "");
+    }
+
     if (msg.type === "res") {
       const entry = this.pending.get(msg.id);
       if (entry) {
