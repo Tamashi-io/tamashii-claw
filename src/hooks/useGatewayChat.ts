@@ -251,31 +251,52 @@ export function useGatewayChat(
           if (needsGatewayFix && agent) {
             originFixAttempted = true;
             const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
-            const gwToken = "tamashiiclaw-gateway-auth";
             console.log("[gateway] Auto-fixing gateway config via exec...", { browserOrigin, needsOriginFix, needsTokenFix });
             setError("Configuring gateway access...");
             try {
               const fixToken = await getToken();
-              const script = `python3 -c "
+
+              if (needsTokenFix) {
+                // Read existing gateway auth token from agent config
+                try {
+                  const readCmd = `python3 -c "import json; c=json.load(open('/home/ubuntu/.openclaw/openclaw.json')); print(c.get('gateway',{}).get('auth',{}).get('token',''))"`;
+                  const readResp = await apiFetch<{ stdout?: string; output?: string }>(
+                    `/agents/${agent.id}/exec`, fixToken,
+                    { method: "POST", body: JSON.stringify({ command: readCmd }) }
+                  );
+                  const existingToken = (readResp.stdout ?? readResp.output ?? "").trim();
+                  if (existingToken) {
+                    console.log("[gateway] Found existing gateway token, using it");
+                    gatewayToken = existingToken;
+                    storeGatewayToken(agent.id, existingToken);
+                  }
+                } catch {
+                  console.warn("[gateway] Could not read gateway token from config");
+                }
+              }
+
+              if (needsOriginFix && browserOrigin) {
+                // Patch allowed origins in config
+                const patchCmd = `python3 -c "
 import json
-p = '/home/ubuntu/.openclaw/openclaw.json'
-with open(p) as f: c = json.load(f)
-gw = c.setdefault('gateway', {})
-gw['mode'] = 'local'
-origins = gw.setdefault('controlUi', {}).get('allowedOrigins', [])
-for o in ['${browserOrigin}', 'http://localhost:3000']:
-    if o and o not in origins: origins.append(o)
-gw['controlUi']['allowedOrigins'] = origins
-gw.setdefault('auth', {})['token'] = '${gwToken}'
-with open(p, 'w') as f: json.dump(c, f, indent=2)
-print('gateway config patched')
+p='/home/ubuntu/.openclaw/openclaw.json'
+c=json.load(open(p))
+gw=c.setdefault('gateway',{})
+gw['mode']='local'
+o=gw.setdefault('controlUi',{}).get('allowedOrigins',[])
+for x in ['${browserOrigin}','http://localhost:3000']:
+ if x and x not in o: o.append(x)
+gw['controlUi']['allowedOrigins']=o
+json.dump(c,open(p,'w'),indent=2)
+print('ok')
 "`;
-              await apiFetch(`/agents/${agent.id}/exec`, fixToken, {
-                method: "POST",
-                body: JSON.stringify({ command: ["bash", "-c", script] }),
-              });
-              console.log("[gateway] Config fix applied, waiting for gateway restart...");
-              await new Promise((r) => setTimeout(r, 8_000));
+                await apiFetch(`/agents/${agent.id}/exec`, fixToken, {
+                  method: "POST",
+                  body: JSON.stringify({ command: patchCmd }),
+                });
+                console.log("[gateway] Origin fix applied, waiting for gateway restart...");
+                await new Promise((r) => setTimeout(r, 8_000));
+              }
             } catch (fixErr) {
               console.warn("[gateway] Auto-fix failed:", fixErr);
             }
