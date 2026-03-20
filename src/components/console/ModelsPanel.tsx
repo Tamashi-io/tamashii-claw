@@ -63,7 +63,10 @@ export function ModelsPanel({ gateway, connected }: ModelsPanelProps) {
     const fullId = providerId ? `${providerId}/${modelId}` : modelId;
     setSettingDefault(modelId);
     try {
-      await gateway.configPatch({ defaultModel: fullId });
+      // Config path: agents.defaults.model.primary
+      await gateway.configPatch({
+        agents: { defaults: { model: { primary: fullId } } },
+      });
       setDefaultModel(modelId);
       await loadModels();
     } catch (err) {
