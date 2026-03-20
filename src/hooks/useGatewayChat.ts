@@ -243,15 +243,16 @@ export function useGatewayChat(
           console.warn(`[gateway] Attempt ${attempt + 1} failed:`, lastError);
           gw = null;
 
-          // Auto-fix: patch gateway config for origin / token / mode issues
+          // Auto-fix: patch gateway config for origin / token / mode / identity issues
           const needsOriginFix = lastError.includes("origin not allowed");
           const needsTokenFix = lastError.includes("token mismatch");
-          const needsGatewayFix = (needsOriginFix || needsTokenFix) && !originFixAttempted;
+          const needsIdentityFix = lastError.includes("device identity");
+          const needsGatewayFix = (needsOriginFix || needsTokenFix || needsIdentityFix) && !originFixAttempted;
 
           if (needsGatewayFix && agent) {
             originFixAttempted = true;
             const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
-            console.log("[gateway] Auto-fixing gateway config via exec...", { browserOrigin, needsOriginFix, needsTokenFix });
+            console.log("[gateway] Auto-fixing gateway config via exec...", { browserOrigin, needsOriginFix, needsTokenFix, needsIdentityFix });
             setError("Configuring gateway access...");
             try {
               const fixToken = await getToken();
@@ -275,18 +276,23 @@ export function useGatewayChat(
                 }
               }
 
-              if (needsOriginFix && browserOrigin) {
-                // Patch allowed origins in config
+              if (needsOriginFix || needsIdentityFix) {
+                // Patch config: allowed origins + disable device identity requirement
                 const patchCmd = `python3 -c "
 import json
 p='/home/ubuntu/.openclaw/openclaw.json'
 c=json.load(open(p))
 gw=c.setdefault('gateway',{})
 gw['mode']='local'
-o=gw.setdefault('controlUi',{}).get('allowedOrigins',[])
+auth=gw.setdefault('auth',{})
+auth['mode']='token'
+auth['requireDeviceIdentity']=False
+ui=gw.setdefault('controlUi',{})
+ui['requireDeviceIdentity']=False
+o=ui.get('allowedOrigins',[])
 for x in ['${browserOrigin}','http://localhost:3000']:
  if x and x not in o: o.append(x)
-gw['controlUi']['allowedOrigins']=o
+ui['allowedOrigins']=o
 json.dump(c,open(p,'w'),indent=2)
 print('ok')
 "`;
@@ -294,7 +300,7 @@ print('ok')
                   method: "POST",
                   body: JSON.stringify({ command: patchCmd }),
                 });
-                console.log("[gateway] Origin fix applied, waiting for gateway restart...");
+                console.log("[gateway] Config fix applied, waiting for gateway restart...");
                 await new Promise((r) => setTimeout(r, 8_000));
               }
             } catch (fixErr) {

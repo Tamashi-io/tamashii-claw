@@ -96,7 +96,7 @@ export class GatewayClient {
               client: {
                 id: this.config.clientId,
                 version: "tamashiiclaw-frontend",
-                platform: "browser",
+                platform: "sdk",
                 mode: this.config.clientMode,
               },
               auth: { token: this.config.gatewayToken },
