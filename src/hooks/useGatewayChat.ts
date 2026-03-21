@@ -277,15 +277,15 @@ else:
         console.warn("[gateway] Pre-flight config check failed:", e);
       }
 
-      // Diagnostic: check OpenClaw agent version and recent error logs
+      // Diagnostic: find OpenClaw crash source and check for updates
       try {
         const diagToken = await getToken();
-        const diagCmd = `openclaw --version 2>&1; echo "---"; journalctl -u openclaw --no-pager -n 30 --output=cat 2>/dev/null || tail -30 /home/ubuntu/.openclaw/logs/agent.log 2>/dev/null || echo "no logs found"`;
+        const diagCmd = `openclaw --version 2>&1; echo "===LOGS==="; find /home/ubuntu/.openclaw/logs -name '*.log' -newer /home/ubuntu/.openclaw/openclaw.json 2>/dev/null | head -5; for f in /home/ubuntu/.openclaw/logs/agent.log /home/ubuntu/.openclaw/logs/gateway.log /var/log/openclaw/*.log; do [ -f "$f" ] && echo "---$f---" && grep -i "type\\|error\\|stack\\|TypeError" "$f" | tail -20; done 2>/dev/null; echo "===SRC==="; find /usr/lib/openclaw /usr/local/lib/openclaw /opt/openclaw /home/ubuntu/.openclaw/node_modules /usr/local/lib/node_modules/openclaw -name '*.js' 2>/dev/null | head -5; echo "===STREAMING==="; grep -rn '\\.type' /usr/lib/openclaw/lib/llm/ /usr/local/lib/openclaw/lib/llm/ /opt/openclaw/lib/llm/ /home/ubuntu/.openclaw/node_modules/openclaw/lib/llm/ 2>/dev/null | grep -i 'stream\\|sse\\|chunk\\|event\\|parse\\|anthropic' | head -20; echo "===UPDATE==="; openclaw update --check 2>&1 || openclaw --help 2>&1 | grep -i 'update\\|upgrade' || echo "no update command"`;
         const diagResp = await apiFetch<{ stdout?: string; output?: string }>(
           `/agents/${agent.id}/exec`, diagToken,
-          { method: "POST", body: JSON.stringify({ command: diagCmd, timeout: 15 }) }
+          { method: "POST", body: JSON.stringify({ command: diagCmd, timeout: 30 }) }
         );
-        console.log("[gateway] OpenClaw agent info:\n" + (diagResp.stdout ?? diagResp.output ?? ""));
+        console.log("[gateway] OpenClaw diagnostics:\n" + (diagResp.stdout ?? diagResp.output ?? ""));
       } catch (e) {
         console.warn("[gateway] OpenClaw diagnostics failed:", e);
       }
@@ -428,6 +428,18 @@ else:
           const data = agentPayload.data as Record<string, unknown> | undefined;
           if (data?.phase === "error") {
             console.error("[gateway] Agent error:", data.error);
+            // Grab full stack trace from agent logs immediately after crash
+            if (agent) {
+              getToken().then(t => {
+                const stackCmd = `for f in /home/ubuntu/.openclaw/logs/agent.log /home/ubuntu/.openclaw/logs/gateway.log /var/log/openclaw/agent.log; do [ -f "$f" ] && echo "---$f---" && tail -50 "$f" 2>/dev/null; done; echo "===PROC==="; ps aux | grep -i openclaw | head -5; echo "===STDERR==="; journalctl -u openclaw --no-pager -n 50 --output=cat 2>/dev/null || echo "no journalctl"`;
+                apiFetch<{ stdout?: string; output?: string }>(
+                  `/agents/${agent.id}/exec`, t,
+                  { method: "POST", body: JSON.stringify({ command: stackCmd, timeout: 15 }) }
+                ).then(r => {
+                  console.log("[gateway] Agent crash logs:\n" + (r.stdout ?? r.output ?? "no output"));
+                }).catch(() => {});
+              }).catch(() => {});
+            }
           }
         } else if (event === "chat.content") {
           setMessages((prev) => {
