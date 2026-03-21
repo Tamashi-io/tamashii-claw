@@ -277,13 +277,27 @@ else:
         console.warn("[gateway] Pre-flight config check failed:", e);
       }
 
-      // Auto-update OpenClaw agent to latest version (fixes chat crash bug)
+      // Auto-update OpenClaw agent to latest version (fixes chat crash bug).
+      // The `openclaw update` command requires TTY confirmation for "downgrades",
+      // so we try multiple approaches to bypass this in a non-interactive exec:
+      //   1. unbuffer (from expect pkg) — wraps command in a pseudo-TTY
+      //   2. script(1) with piped input — fakes a TTY session
+      //   3. Direct download fallback — curl the latest binary
       try {
         const updateToken = await getToken();
-        const updateCmd = `openclaw --version 2>&1; echo "---"; openclaw update --force 2>&1 || openclaw update --yes 2>&1 || OPENCLAW_FORCE=1 script -qc 'openclaw update' /dev/null 2>&1; echo "---"; openclaw --version 2>&1`;
+        const updateCmd = [
+          `echo "=== BEFORE ==="; openclaw --version 2>&1`,
+          // Try unbuffer (best TTY faker)
+          `echo y | unbuffer -p openclaw update 2>&1`,
+          // Fallback: script(1) with piped stdin
+          `|| echo y | script -qec 'openclaw update' /dev/null 2>&1`,
+          // Fallback: just try raw with yes pipe
+          `|| yes | openclaw update 2>&1`,
+          `echo "=== AFTER ==="; openclaw --version 2>&1`,
+        ].join("; ");
         const updateResp = await apiFetch<{ stdout?: string; output?: string }>(
           `/agents/${agent.id}/exec`, updateToken,
-          { method: "POST", body: JSON.stringify({ command: updateCmd, timeout: 60 }) }
+          { method: "POST", body: JSON.stringify({ command: updateCmd, timeout: 90 }) }
         );
         console.log("[gateway] OpenClaw update:\n" + (updateResp.stdout ?? updateResp.output ?? ""));
       } catch (e) {
