@@ -280,7 +280,7 @@ else:
       // Auto-update OpenClaw agent to latest version (fixes chat crash bug)
       try {
         const updateToken = await getToken();
-        const updateCmd = `openclaw --version 2>&1; echo "---"; yes | openclaw update 2>&1; echo "---"; openclaw --version 2>&1`;
+        const updateCmd = `openclaw --version 2>&1; echo "---"; openclaw update --force 2>&1 || openclaw update --yes 2>&1 || OPENCLAW_FORCE=1 script -qc 'openclaw update' /dev/null 2>&1; echo "---"; openclaw --version 2>&1`;
         const updateResp = await apiFetch<{ stdout?: string; output?: string }>(
           `/agents/${agent.id}/exec`, updateToken,
           { method: "POST", body: JSON.stringify({ command: updateCmd, timeout: 60 }) }
