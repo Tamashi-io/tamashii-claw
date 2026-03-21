@@ -10,6 +10,9 @@ import { ConfirmDialog } from "@/components/dashboard/ConfirmDialog";
 import { UpgradeRequiredModal } from "@/components/dashboard/UpgradeRequiredModal";
 import { AgentCardSkeleton } from "@/components/dashboard/Skeleton";
 
+/** Default OpenClaw container image (must match HyperCLI SDK DEFAULT_OPENCLAW_IMAGE) */
+const DEFAULT_OPENCLAW_IMAGE = "ghcr.io/hypercli/hypercli-openclaw:prod";
+
 interface Agent {
   id: string;
   name: string;
@@ -208,6 +211,7 @@ export default function AgentsPage() {
           cpu_millicores: cpu,
           memory_mib: memory,
           start: true,
+          config: { image: DEFAULT_OPENCLAW_IMAGE },
         }),
       });
       setShowCreate(false);
@@ -233,7 +237,12 @@ export default function AgentsPage() {
   const startAgent = async (id: string) => {
     try {
       const token = await getToken();
-      await apiFetch(`/agents/${id}/start`, token, { method: "POST" });
+      await apiFetch(`/agents/${id}/start`, token, {
+        method: "POST",
+        body: JSON.stringify({
+          config: { image: DEFAULT_OPENCLAW_IMAGE },
+        }),
+      });
       await loadAgents();
     } catch (err) {
       console.error("Failed to start agent:", err);

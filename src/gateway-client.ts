@@ -229,21 +229,6 @@ async function signDevicePayload(privateKey: string, payload: string): Promise<s
 
 // ── Helpers ────────────────────────────────────────────────────────
 
-function deepMerge(base: Record<string, unknown>, over: Record<string, unknown>): Record<string, unknown> {
-  const result = { ...base };
-  for (const [key, value] of Object.entries(over)) {
-    if (
-      value && typeof value === "object" && !Array.isArray(value) &&
-      result[key] && typeof result[key] === "object" && !Array.isArray(result[key])
-    ) {
-      result[key] = deepMerge(result[key] as Record<string, unknown>, value as Record<string, unknown>);
-    } else {
-      result[key] = value;
-    }
-  }
-  return result;
-}
-
 // ── Gateway Client ─────────────────────────────────────────────────
 
 export type CloseHandler = (code: number, reason: string) => void;
@@ -546,14 +531,15 @@ export class GatewayClient {
   }
 
   async configPatch(patch: Record<string, unknown>): Promise<void> {
-    // Gateway uses optimistic concurrency: config.patch requires the baseHash
-    // from the last config.get response.
-    const { config: current, baseHash } = await this.configGetRaw();
-    const merged = deepMerge(current, patch);
-    const params: Record<string, unknown> = { raw: JSON.stringify(merged, null, 2) };
-    if (baseHash) params.baseHash = baseHash;
+    // Gateway does server-side merge — just send the patch + baseHash for
+    // optimistic concurrency (matches HyperCLI SDK 2026.3.20 behavior).
+    const r = await this.call<any>("config.get");
+    const baseHash = r.hash ?? r.baseHash ?? "";
     try {
-      await this.call("config.patch", params, 30_000);
+      await this.call("config.patch", {
+        raw: JSON.stringify(patch),
+        baseHash,
+      }, 30_000);
     } catch (err) {
       // Gateway restarts after config changes — if the WebSocket closed
       // right after sending, the config was almost certainly applied.
