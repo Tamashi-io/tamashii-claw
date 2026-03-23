@@ -12,17 +12,27 @@ interface Plan {
   price: number;
   aiu: number;
   agents: number;
-  tpd: string;
+  tpd: number | string;
   features: string[];
   highlighted?: boolean;
 }
 
-// HyperClaw net amounts (excl. $5 platform fee)
+// HyperClaw net amounts in USDC 6-decimal units (excl. $5 platform fee)
 const HYPERCLAW_AMOUNTS: Record<string, number> = {
-  "1aiu": 20_400_000,
-  "5aiu": 100_000_000,
-  "10aiu": 200_000_000,
+  "1aiu": 20_400_000,   // $20.40
+  "2aiu": 40_000_000,   // $40
+  "5aiu": 100_000_000,  // $100
+  "10aiu": 200_000_000, // $200
 };
+
+function formatTpd(tpd: number | string): string {
+  const n = typeof tpd === "string" ? parseInt(tpd) : tpd;
+  if (isNaN(n)) return String(tpd);
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(0)}B`;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(0)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+  return String(n);
+}
 
 type PaymentStep =
   | "idle"
@@ -51,10 +61,11 @@ export default function TgPlansPage() {
     try {
       const token = await getToken();
       const [plansRes, currentRes] = await Promise.all([
-        apiFetch<Plan[]>("/plans", token),
+        apiFetch<any>("/plans", token),
         apiFetch<any>("/plans/current", token),
       ]);
-      setPlans(Array.isArray(plansRes) ? plansRes : []);
+      const plansList = Array.isArray(plansRes) ? plansRes : (plansRes?.plans ?? []);
+      setPlans(plansList);
       setCurrentPlanId(currentRes?.id ?? null);
     } catch (err) {
       console.error("[tg-plans] Load failed:", err);
@@ -251,7 +262,7 @@ export default function TgPlansPage() {
                 </div>
 
                 <div className="text-xs text-gray-400 mb-3 space-y-1">
-                  <p>{plan.agents} agent{plan.agents > 1 ? "s" : ""} &middot; {plan.tpd} TPD</p>
+                  <p>{plan.agents} agent{plan.agents > 1 ? "s" : ""} &middot; {formatTpd(plan.tpd)} TPD</p>
                   {plan.features?.slice(0, 3).map((f, i) => (
                     <p key={i} className="flex items-center gap-1.5">
                       <Check className="w-3 h-3 text-green-400 flex-shrink-0" />
