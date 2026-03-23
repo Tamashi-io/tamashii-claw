@@ -244,6 +244,8 @@ for k in ['requireDeviceIdentity']:
  if k in gw: gw.pop(k); changed=True
  if k in gw.get('auth',{}): gw['auth'].pop(k); changed=True
  if k in gw.get('controlUi',{}): gw['controlUi'].pop(k); changed=True
+if 'providers' in c:
+ c.pop('providers'); changed=True
 ui=gw.setdefault('controlUi',{})
 o=ui.get('allowedOrigins',[])
 for x in ['${browserOrigin}','http://localhost:3000']:

@@ -99,7 +99,7 @@ export function ModelsPanel({ gateway, connected }: ModelsPanelProps) {
         if (newProviderUrl) providerConfig.baseUrl = newProviderUrl;
         if (newProviderKey) providerConfig.apiKey = newProviderKey;
         await gateway.configPatch({
-          providers: { [newProviderId]: providerConfig },
+          llm: { providers: { [newProviderId]: providerConfig } },
         });
       }
       setShowAddProvider(false);
