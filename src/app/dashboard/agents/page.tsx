@@ -42,10 +42,11 @@ interface AgentBudget {
 }
 
 // Fallback if HyperClaw doesn't return size_presets
+// Must match the API's actual preset values (small = 0.5 CPU, 4 GiB)
 const DEFAULT_SIZE_PRESETS: SizePreset[] = [
-  { label: "Small", cpu: 1, memory: 1 },
-  { label: "Medium", cpu: 1, memory: 2 },
-  { label: "Large", cpu: 2, memory: 2 },
+  { label: "Small", cpu: 0.5, memory: 4 },
+  { label: "Medium", cpu: 1, memory: 4 },
+  { label: "Large", cpu: 2, memory: 4 },
 ];
 
 function buildSizePresets(raw?: Record<string, { cpu: number; memory: number }>): SizePreset[] {
