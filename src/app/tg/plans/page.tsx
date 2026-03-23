@@ -97,11 +97,11 @@ export default function TgPlansPage() {
     try {
       const token = await getToken();
 
-      // Step 1: Get swap quote from Symbiosis via backend
-      console.log("[tg-pay] Getting TON swap quote...");
+      // Step 1: Get swap quote from Symbiosis (TON USDT → Base USDC)
+      console.log("[tg-pay] Getting USDT swap quote...");
       const quote = await apiFetch<{
         planId: string;
-        tonAmount: string;
+        usdtAmount: string;
         usdcAmount: string;
         tx: any;
       }>("/swap/ton-quote", token, {
@@ -112,30 +112,32 @@ export default function TgPlansPage() {
         }),
       });
 
-      const tonNano = quote.tonAmount;
-      const tonDisplay = (parseInt(tonNano) / 1_000_000_000).toFixed(2);
-      setTonAmount(tonDisplay);
+      const usdtDisplay = (parseInt(quote.usdtAmount) / 1_000_000).toFixed(2);
+      setTonAmount(usdtDisplay);
       setPaymentStep("confirming");
 
-      console.log(`[tg-pay] Quote: ${tonDisplay} TON → $${plan.price} USDC`);
+      console.log(`[tg-pay] Quote: ${usdtDisplay} USDT → $${plan.price} USDC`);
 
-      // Step 2: Send TON transaction via TON Connect
+      // Step 2: Send USDT transaction via TON Connect
+      // Symbiosis returns TON transaction data (messages array with jetton transfer BOC)
       if (!quote.tx) {
         throw new Error("No transaction data from swap quote");
       }
 
-      // Build TON transaction message from Symbiosis calldata
-      const messages = [{
-        address: quote.tx.to,
-        amount: tonNano,
-        payload: quote.tx.data, // BOC payload if any
-      }];
+      // The Symbiosis tx object contains messages ready for TON Connect
+      const messages = Array.isArray(quote.tx.messages)
+        ? quote.tx.messages
+        : [{
+            address: quote.tx.to,
+            amount: quote.tx.value || "200000000", // 0.2 TON for gas
+            payload: quote.tx.data,
+          }];
 
       setPaymentStep("swapping");
-      console.log("[tg-pay] Sending TON transaction...");
+      console.log("[tg-pay] Sending USDT transaction via TON Connect...");
 
       const txResult = await tonConnectUI.sendTransaction({
-        validUntil: Math.floor(Date.now() / 1000) + 600, // 10 min
+        validUntil: quote.tx.validUntil || Math.floor(Date.now() / 1000) + 600,
         messages,
       });
 
@@ -184,8 +186,8 @@ export default function TgPlansPage() {
   const stepLabel = (step: PaymentStep): string => {
     switch (step) {
       case "quoting": return "Getting price...";
-      case "confirming": return `Confirm ${tonAmount} TON`;
-      case "swapping": return "Swapping TON → USDC...";
+      case "confirming": return `Confirm ${tonAmount} USDT`;
+      case "swapping": return "Bridging USDT → USDC...";
       case "activating": return "Activating plan...";
       case "done": return "Plan activated!";
       case "error": return "Payment failed";
@@ -210,7 +212,7 @@ export default function TgPlansPage() {
     <div className="px-4 pt-4">
       <h1 className="text-lg font-bold mb-1">Plans</h1>
       <p className="text-gray-400 text-xs mb-4">
-        Pay with TON from your Telegram wallet
+        Pay with USDT from your TON wallet
       </p>
 
       {/* Wallet Connection */}
@@ -295,7 +297,7 @@ export default function TgPlansPage() {
                     className="w-full bg-cyan-500 text-white rounded-lg py-2 text-xs font-medium disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     <Wallet className="w-3 h-3" />
-                    {tonAddress ? `Pay with TON — $${plan.price}` : "Connect Wallet"}
+                    {tonAddress ? `Pay with USDT — $${plan.price}` : "Connect Wallet"}
                   </button>
                 )}
               </div>
