@@ -12,6 +12,7 @@
     "@lifi/sdk": "^3.16.1",
     "@noble/ed25519": "^3.0.1",
     "@privy-io/react-auth": "^3.17.0",
+    "@telegram-apps/sdk-react": "^3.3.9",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/ws": "^8.18.1",
     "@x402/axios": "^2.6.0",
