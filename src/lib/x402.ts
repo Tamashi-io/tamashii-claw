@@ -501,9 +501,16 @@ export async function swapAndSubscribe(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  // Convert plan price to USDC 6-decimal units for server-side x402 subscribe
-  const amountUsdc = String(Math.round(amountUsd * 1_000_000));
-  console.log("[swap] Calling swap-subscribe endpoint:", { planId, txHash, amountUsdc });
+  // Send HyperClaw net amount (excl. platform fee) for server-side x402 subscribe
+  const HYPERCLAW_AMOUNTS: Record<string, number> = {
+    "1aiu": 20.40,
+    "2aiu": 40,
+    "5aiu": 100,
+    "10aiu": 200,
+  };
+  const hcAmount = HYPERCLAW_AMOUNTS[planId] ?? amountUsd;
+  const amountUsdc = String(Math.round(hcAmount * 1_000_000));
+  console.log("[swap] Calling swap-subscribe endpoint:", { planId, txHash, amountUsdc, hcAmount });
   const res = await fetch(`${API_BASE}/x402/swap-subscribe`, {
     method: "POST",
     headers,
