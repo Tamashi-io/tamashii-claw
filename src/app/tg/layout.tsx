@@ -3,6 +3,7 @@
 import { TelegramAuthProvider, useTelegramAuth } from "@/components/TelegramAuthProvider";
 import TgNav from "@/components/tg/TgNav";
 import Script from "next/script";
+import { TonConnectUIProvider } from "@tonconnect/ui-react";
 
 function TgShell({ children }: { children: React.ReactNode }) {
   const { isLoading, isAuthenticated } = useTelegramAuth();
@@ -27,7 +28,7 @@ function TgShell({ children }: { children: React.ReactNode }) {
             Open this app from Telegram to get started.
           </p>
           <a
-            href="https://t.me/TamashiiClawBot/app"
+            href="https://t.me/tamashiiclawbot/tamashiibot"
             className="inline-block bg-cyan-500 text-white px-6 py-2 rounded-lg text-sm font-medium"
           >
             Open in Telegram
@@ -53,9 +54,16 @@ export default function TgLayout({ children }: { children: React.ReactNode }) {
         src="https://telegram.org/js/telegram-web-app.js"
         strategy="beforeInteractive"
       />
-      <TelegramAuthProvider>
-        <TgShell>{children}</TgShell>
-      </TelegramAuthProvider>
+      <TonConnectUIProvider
+        manifestUrl="https://claw.tamashi.io/tonconnect-manifest.json"
+        actionsConfiguration={{
+          twaReturnUrl: "https://t.me/tamashiiclawbot/tamashiibot",
+        }}
+      >
+        <TelegramAuthProvider>
+          <TgShell>{children}</TgShell>
+        </TelegramAuthProvider>
+      </TonConnectUIProvider>
     </>
   );
 }

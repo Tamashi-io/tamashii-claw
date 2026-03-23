@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTelegramAuth } from "@/components/TelegramAuthProvider";
 import { apiFetch } from "@/lib/api";
-import { Check, Loader2, Crown } from "lucide-react";
+import { Check, Loader2, Crown, Wallet } from "lucide-react";
+import { TonConnectButton, useTonConnectUI, useTonAddress } from "@tonconnect/ui-react";
 
 interface Plan {
   id: string;
@@ -23,12 +24,28 @@ const HYPERCLAW_AMOUNTS: Record<string, number> = {
   "10aiu": 200_000_000,
 };
 
+type PaymentStep =
+  | "idle"
+  | "quoting"
+  | "confirming"
+  | "swapping"
+  | "activating"
+  | "done"
+  | "error";
+
 export default function TgPlansPage() {
   const { getToken } = useTelegramAuth();
+  const [tonConnectUI] = useTonConnectUI();
+  const tonAddress = useTonAddress();
+
   const [plans, setPlans] = useState<Plan[]>([]);
   const [currentPlanId, setCurrentPlanId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [subscribing, setSubscribing] = useState<string | null>(null);
+
+  const [payingPlanId, setPayingPlanId] = useState<string | null>(null);
+  const [paymentStep, setPaymentStep] = useState<PaymentStep>("idle");
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [tonAmount, setTonAmount] = useState<string | null>(null);
 
   const loadPlans = useCallback(async () => {
     try {
@@ -51,33 +68,117 @@ export default function TgPlansPage() {
   }, [loadPlans]);
 
   const subscribe = async (plan: Plan) => {
-    const amountUsdc = HYPERCLAW_AMOUNTS[plan.id];
-    if (!amountUsdc) {
-      alert("This plan is not available for purchase in Telegram yet.");
+    if (!HYPERCLAW_AMOUNTS[plan.id]) {
+      alert("This plan is not available yet.");
       return;
     }
 
-    setSubscribing(plan.id);
+    if (!tonAddress) {
+      // Prompt wallet connection
+      tonConnectUI.openModal();
+      return;
+    }
+
+    setPayingPlanId(plan.id);
+    setPaymentStep("quoting");
+    setPaymentError(null);
+
     try {
       const token = await getToken();
-      const res = await apiFetch<any>(`/x402/subscribe/${plan.id}`, token, {
+
+      // Step 1: Get swap quote from Symbiosis via backend
+      console.log("[tg-pay] Getting TON swap quote...");
+      const quote = await apiFetch<{
+        planId: string;
+        tonAmount: string;
+        usdcAmount: string;
+        tx: any;
+      }>("/swap/ton-quote", token, {
         method: "POST",
-        body: JSON.stringify({ amountUsdc: String(amountUsdc) }),
+        body: JSON.stringify({
+          planId: plan.id,
+          fromAddress: tonAddress,
+        }),
       });
 
-      if (res.key || res.ok) {
-        alert(`Subscribed to ${plan.name}! Your API key has been activated.`);
-        await loadPlans();
+      const tonNano = quote.tonAmount;
+      const tonDisplay = (parseInt(tonNano) / 1_000_000_000).toFixed(2);
+      setTonAmount(tonDisplay);
+      setPaymentStep("confirming");
+
+      console.log(`[tg-pay] Quote: ${tonDisplay} TON → $${plan.price} USDC`);
+
+      // Step 2: Send TON transaction via TON Connect
+      if (!quote.tx) {
+        throw new Error("No transaction data from swap quote");
       }
+
+      // Build TON transaction message from Symbiosis calldata
+      const messages = [{
+        address: quote.tx.to,
+        amount: tonNano,
+        payload: quote.tx.data, // BOC payload if any
+      }];
+
+      setPaymentStep("swapping");
+      console.log("[tg-pay] Sending TON transaction...");
+
+      const txResult = await tonConnectUI.sendTransaction({
+        validUntil: Math.floor(Date.now() / 1000) + 600, // 10 min
+        messages,
+      });
+
+      const txHash = txResult.boc;
+      console.log("[tg-pay] TON tx sent:", txHash?.slice(0, 20) + "...");
+
+      // Step 3: Track swap + activate subscription on backend
+      setPaymentStep("activating");
+      console.log("[tg-pay] Waiting for swap + activating plan...");
+
+      const result = await apiFetch<any>("/x402/ton-subscribe", token, {
+        method: "POST",
+        body: JSON.stringify({
+          planId: plan.id,
+          txHash,
+          amount: String(HYPERCLAW_AMOUNTS[plan.id]),
+        }),
+      });
+
+      setPaymentStep("done");
+      console.log("[tg-pay] Plan activated!", result);
+
+      // Refresh plans
+      await loadPlans();
+
+      setTimeout(() => {
+        setPaymentStep("idle");
+        setPayingPlanId(null);
+        setTonAmount(null);
+      }, 2000);
     } catch (err: any) {
       const msg = err?.message || String(err);
-      if (msg.includes("insufficient_funds")) {
-        alert("Insufficient USDC balance in the operator wallet.");
-      } else {
-        alert(`Subscription failed: ${msg}`);
-      }
-    } finally {
-      setSubscribing(null);
+      console.error("[tg-pay] Payment failed:", msg);
+      setPaymentError(msg);
+      setPaymentStep("error");
+
+      setTimeout(() => {
+        setPaymentStep("idle");
+        setPayingPlanId(null);
+        setPaymentError(null);
+        setTonAmount(null);
+      }, 5000);
+    }
+  };
+
+  const stepLabel = (step: PaymentStep): string => {
+    switch (step) {
+      case "quoting": return "Getting price...";
+      case "confirming": return `Confirm ${tonAmount} TON`;
+      case "swapping": return "Swapping TON → USDC...";
+      case "activating": return "Activating plan...";
+      case "done": return "Plan activated!";
+      case "error": return "Payment failed";
+      default: return "";
     }
   };
 
@@ -98,15 +199,36 @@ export default function TgPlansPage() {
     <div className="px-4 pt-4">
       <h1 className="text-lg font-bold mb-1">Plans</h1>
       <p className="text-gray-400 text-xs mb-4">
-        Subscribe to deploy agents with built-in inference
+        Pay with TON from your Telegram wallet
       </p>
 
+      {/* Wallet Connection */}
+      <div className="mb-4">
+        {tonAddress ? (
+          <div className="bg-white/5 rounded-xl px-4 py-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Wallet className="w-4 h-4 text-cyan-400" />
+              <span className="text-xs text-gray-300">
+                {tonAddress.slice(0, 6)}...{tonAddress.slice(-4)}
+              </span>
+            </div>
+            <TonConnectButton className="ton-connect-btn-sm" />
+          </div>
+        ) : (
+          <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-xl p-4 text-center">
+            <p className="text-sm text-gray-300 mb-3">Connect your TON wallet to subscribe</p>
+            <TonConnectButton />
+          </div>
+        )}
+      </div>
+
+      {/* Plans */}
       <div className="space-y-3">
         {plans
           .filter((p) => HYPERCLAW_AMOUNTS[p.id])
           .map((plan) => {
             const isCurrent = plan.id === currentPlanId;
-            const isSubscribing = subscribing === plan.id;
+            const isPaying = payingPlanId === plan.id;
 
             return (
               <div
@@ -142,23 +264,39 @@ export default function TgPlansPage() {
                   <div className="bg-green-500/20 text-green-400 rounded-lg py-2 text-center text-xs font-medium">
                     Current Plan
                   </div>
+                ) : isPaying ? (
+                  <div className={`rounded-lg py-2 text-center text-xs font-medium flex items-center justify-center gap-2 ${
+                    paymentStep === "done"
+                      ? "bg-green-500/20 text-green-400"
+                      : paymentStep === "error"
+                        ? "bg-red-500/20 text-red-400"
+                        : "bg-cyan-500/20 text-cyan-400"
+                  }`}>
+                    {paymentStep !== "done" && paymentStep !== "error" && (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    )}
+                    {stepLabel(paymentStep)}
+                  </div>
                 ) : (
                   <button
                     onClick={() => subscribe(plan)}
-                    disabled={!!subscribing}
+                    disabled={!!payingPlanId}
                     className="w-full bg-cyan-500 text-white rounded-lg py-2 text-xs font-medium disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {isSubscribing ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      `Subscribe — $${plan.price}`
-                    )}
+                    <Wallet className="w-3 h-3" />
+                    {tonAddress ? `Pay with TON — $${plan.price}` : "Connect Wallet"}
                   </button>
                 )}
               </div>
             );
           })}
       </div>
+
+      {paymentError && (
+        <p className="text-center text-xs text-red-400 mt-3 px-2">
+          {paymentError.length > 100 ? paymentError.slice(0, 100) + "..." : paymentError}
+        </p>
+      )}
     </div>
   );
 }
