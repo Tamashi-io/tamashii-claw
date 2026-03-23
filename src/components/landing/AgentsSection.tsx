@@ -181,7 +181,7 @@ export function AgentsSection() {
               </ul>
               <div className="mt-6">
                 <Link
-                  href="/dashboard/agents"
+                  href="https://claw.tamashii.io/dashboard/agents"
                   className="btn-primary px-6 py-2.5 rounded-lg text-sm font-semibold inline-flex items-center gap-2"
                 >
                   Launch TamashiiClaw

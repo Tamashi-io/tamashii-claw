@@ -91,7 +91,7 @@ export function HeroSection() {
           className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8"
         >
           <a
-            href="/dashboard"
+            href="https://claw.tamashii.io/dashboard"
             className="btn-primary px-8 py-3 rounded-lg text-base font-semibold glow-green-subtle"
           >
             Launch App

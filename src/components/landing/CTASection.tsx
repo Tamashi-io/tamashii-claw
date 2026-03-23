@@ -40,7 +40,7 @@ export function CTASection() {
             className="flex flex-col sm:flex-row items-center justify-center gap-4"
           >
             <Link
-              href="/dashboard"
+              href="https://claw.tamashii.io/dashboard"
               className="btn-primary px-8 py-3 rounded-lg text-sm font-semibold inline-flex items-center gap-2"
             >
               Launch App
