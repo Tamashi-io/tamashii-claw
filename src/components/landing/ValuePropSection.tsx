@@ -18,7 +18,7 @@ const sides = [
       "Kimi K2.5, GLM-5, MiniMax M2.5",
       "~36M tokens/hour per AIU",
     ],
-    cta: { label: "Get API Key", href: "https://claw.tamashii.io/dashboard/keys" },
+    cta: { label: "Get API Key", href: "https://claw.tamashi.io/dashboard/keys" },
     highlighted: false,
   },
   {
@@ -34,7 +34,7 @@ const sides = [
       "Built-in inference — no external API needed",
       "Start, stop, and scale on demand",
     ],
-    cta: { label: "Deploy Agent", href: "https://claw.tamashii.io/dashboard/agents" },
+    cta: { label: "Deploy Agent", href: "https://claw.tamashi.io/dashboard/agents" },
     highlighted: true,
   },
 ];

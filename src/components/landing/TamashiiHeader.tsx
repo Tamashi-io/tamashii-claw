@@ -60,7 +60,7 @@ export function TamashiiHeader() {
           <div className="hidden md:flex items-center gap-3">
             {isAuthenticated ? (
               <button
-                onClick={() => window.location.href = "https://claw.tamashii.io/dashboard"}
+                onClick={() => window.location.href = "https://claw.tamashi.io/dashboard"}
                 className="btn-primary px-4 py-2 rounded-lg text-sm font-medium"
               >
                 Launch App
@@ -111,7 +111,7 @@ export function TamashiiHeader() {
             <div className="mt-4 flex flex-col gap-2">
               {isAuthenticated ? (
                 <button
-                  onClick={() => { setMobileOpen(false); window.location.href = "https://claw.tamashii.io/dashboard"; }}
+                  onClick={() => { setMobileOpen(false); window.location.href = "https://claw.tamashi.io/dashboard"; }}
                   className="btn-primary px-4 py-2 rounded-lg text-sm font-medium w-full"
                 >
                   Launch App

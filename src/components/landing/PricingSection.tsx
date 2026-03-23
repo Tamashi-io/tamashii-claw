@@ -102,7 +102,7 @@ export function PricingSection() {
               </ul>
 
               <a
-                href="https://claw.tamashii.io/dashboard/plans"
+                href="https://claw.tamashi.io/dashboard/plans"
                 className={`w-full py-2.5 rounded-lg text-sm font-medium transition-all block text-center ${
                   plan.highlighted ? "btn-primary" : "btn-secondary"
                 }`}
