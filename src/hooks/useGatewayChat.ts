@@ -228,6 +228,7 @@ export function useGatewayChat(
       try {
         const prefixToken = await getToken();
         const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
+        const agentOrigin = hostname ? `https://${hostname}` : "";
 
         const preflightCmd = `python3 -c "
 import json,sys
@@ -248,7 +249,7 @@ if 'providers' in c:
  c.pop('providers'); changed=True
 ui=gw.setdefault('controlUi',{})
 o=ui.get('allowedOrigins',[])
-for x in ['${browserOrigin}','http://localhost:3000']:
+for x in ['${browserOrigin}','${agentOrigin}','http://localhost:3000']:
  if x and x not in o: o.append(x); changed=True
 if changed:
  ui['allowedOrigins']=o
