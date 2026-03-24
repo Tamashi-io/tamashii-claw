@@ -276,13 +276,18 @@ export default function AgentsPage() {
     if (!agent.hostname) return;
     try {
       const token = await getToken();
-      const resp = await apiFetch<{ token?: string; jwt_token?: string }>(
-        `/agents/${agent.id}/token`, token
-      );
-      const jwt = resp.token ?? resp.jwt_token;
-      const baseUrl = `https://${agent.hostname}/chat?session=main`;
-      const url = jwt ? `${baseUrl}&token=${encodeURIComponent(jwt)}` : baseUrl;
-      window.open(url, "_blank");
+      // Fetch both HyperClaw JWT (for reverse-proxy auth) and gateway token
+      const [tokenResp, envResp] = await Promise.all([
+        apiFetch<{ token?: string; jwt_token?: string }>(`/agents/${agent.id}/token`, token),
+        apiFetch<{ env: Record<string, string> }>(`/agents/${agent.id}/env`, token).catch(() => ({ env: {} })),
+      ]);
+      const jwt = tokenResp.token ?? tokenResp.jwt_token;
+      const gwToken = envResp.env?.OPENCLAW_GATEWAY_TOKEN ?? "tamashiiclaw-gateway-auth";
+      // Pass both: HyperClaw JWT for proxy auth + gateway token for Control UI auth
+      const params = new URLSearchParams({ session: "main" });
+      if (jwt) params.set("token", jwt);
+      if (gwToken) params.set("gwtoken", gwToken);
+      window.open(`https://${agent.hostname}/chat?${params.toString()}`, "_blank");
     } catch (err) {
       console.error("Failed to open dashboard:", err);
       window.open(`https://${agent.hostname}/chat?session=main`, "_blank");
