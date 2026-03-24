@@ -283,10 +283,9 @@ export default function AgentsPage() {
       ]);
       const jwt = tokenResp.token ?? tokenResp.jwt_token;
       const gwToken = (envResp.env as Record<string, string>)?.OPENCLAW_GATEWAY_TOKEN ?? "tamashiiclaw-gateway-auth";
-      // Pass both: HyperClaw JWT for proxy auth + gateway token for Control UI auth
+      // The Control UI reads "token" from the URL for gateway auth
       const params = new URLSearchParams({ session: "main" });
-      if (jwt) params.set("token", jwt);
-      if (gwToken) params.set("gwtoken", gwToken);
+      if (gwToken) params.set("token", gwToken);
       window.open(`https://${agent.hostname}/chat?${params.toString()}`, "_blank");
     } catch (err) {
       console.error("Failed to open dashboard:", err);
