@@ -280,13 +280,12 @@ export default function AgentsPage() {
         `/agents/${agent.id}/token`, token
       );
       const jwt = resp.token ?? resp.jwt_token;
-      const desktopUrl = `https://desktop-${agent.hostname}`;
-      const url = jwt ? `${desktopUrl}?token=${encodeURIComponent(jwt)}` : desktopUrl;
+      const baseUrl = `https://${agent.hostname}/chat?session=main`;
+      const url = jwt ? `${baseUrl}&token=${encodeURIComponent(jwt)}` : baseUrl;
       window.open(url, "_blank");
     } catch (err) {
       console.error("Failed to open dashboard:", err);
-      // Fall back to opening without token
-      window.open(`https://desktop-${agent.hostname}`, "_blank");
+      window.open(`https://${agent.hostname}/chat?session=main`, "_blank");
     }
   };
 
