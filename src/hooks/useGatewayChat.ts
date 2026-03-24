@@ -245,6 +245,11 @@ for k in ['requireDeviceIdentity']:
  if k in gw: gw.pop(k); changed=True
  if k in gw.get('auth',{}): gw['auth'].pop(k); changed=True
  if k in gw.get('controlUi',{}): gw['controlUi'].pop(k); changed=True
+if not gw.get('autoApprovePairing'):
+ gw['autoApprovePairing']=True; changed=True
+a=gw.setdefault('auth',{})
+if a.get('requirePairing')!=False:
+ a['requirePairing']=False; changed=True
 if 'providers' in c:
  c.pop('providers'); changed=True
 ui=gw.setdefault('controlUi',{})
