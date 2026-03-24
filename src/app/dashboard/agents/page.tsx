@@ -282,7 +282,7 @@ export default function AgentsPage() {
         apiFetch<{ env: Record<string, string> }>(`/agents/${agent.id}/env`, token).catch(() => ({ env: {} })),
       ]);
       const jwt = tokenResp.token ?? tokenResp.jwt_token;
-      const gwToken = envResp.env?.OPENCLAW_GATEWAY_TOKEN ?? "tamashiiclaw-gateway-auth";
+      const gwToken = (envResp.env as Record<string, string>)?.OPENCLAW_GATEWAY_TOKEN ?? "tamashiiclaw-gateway-auth";
       // Pass both: HyperClaw JWT for proxy auth + gateway token for Control UI auth
       const params = new URLSearchParams({ session: "main" });
       if (jwt) params.set("token", jwt);
