@@ -252,12 +252,12 @@ o=ui.get('allowedOrigins',[])
 for x in ['${browserOrigin}','${agentOrigin}','http://localhost:3000']:
  if x and x not in o: o.append(x); changed=True
 auth=gw.setdefault('auth',{})
-if not auth.get('token'):
- auth['mode']='token'; auth['token']='tamashiiclaw-gateway-auth'; changed=True
+gt='tamashiiclaw-gateway-auth'
+if auth.get('token')!=gt:
+ auth['mode']='token'; auth['token']=gt; changed=True
 rt=gw.setdefault('remote',{})
-tok=auth.get('token','tamashiiclaw-gateway-auth')
-if rt.get('token')!=tok:
- rt['token']=tok; changed=True
+if rt.get('token')!=gt:
+ rt['token']=gt; changed=True
 if changed:
  ui['allowedOrigins']=o
 if changed:
