@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Play, Square, Trash2, X, Cpu, HardDrive, Terminal, Loader2 } from "lucide-react";
+import { Plus, Play, Square, Trash2, X, Cpu, HardDrive, Terminal, Loader2, ExternalLink } from "lucide-react";
 import { useTamashiiAuth } from "@/hooks/useTamashiiAuth";
 import { apiFetch } from "@/lib/api";
 import { agentAvatar } from "@/lib/avatar";
@@ -272,6 +272,24 @@ export default function AgentsPage() {
     }
   };
 
+  const openDashboard = async (agent: Agent) => {
+    if (!agent.hostname) return;
+    try {
+      const token = await getToken();
+      const resp = await apiFetch<{ token?: string; jwt_token?: string }>(
+        `/agents/${agent.id}/token`, token
+      );
+      const jwt = resp.token ?? resp.jwt_token;
+      const desktopUrl = `https://desktop-${agent.hostname}`;
+      const url = jwt ? `${desktopUrl}?token=${encodeURIComponent(jwt)}` : desktopUrl;
+      window.open(url, "_blank");
+    } catch (err) {
+      console.error("Failed to open dashboard:", err);
+      // Fall back to opening without token
+      window.open(`https://desktop-${agent.hostname}`, "_blank");
+    }
+  };
+
   const stateColor = (state: string) => {
     switch (state) {
       case "RUNNING": return "text-[#38D39F]";
@@ -470,13 +488,25 @@ export default function AgentsPage() {
 
                 <div className="flex items-center gap-2">
                   {isRunning && (
-                    <button
-                      onClick={() => router.push(`/dashboard/agents/${agent.id}/console`)}
-                      className="flex-1 btn-primary px-3 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1"
-                    >
-                      <Terminal className="w-3 h-3" />
-                      Console
-                    </button>
+                    <>
+                      <button
+                        onClick={() => router.push(`/dashboard/agents/${agent.id}/console`)}
+                        className="flex-1 btn-primary px-3 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1"
+                      >
+                        <Terminal className="w-3 h-3" />
+                        Console
+                      </button>
+                      {agent.hostname && (
+                        <button
+                          onClick={() => openDashboard(agent)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1 border border-border-primary text-text-secondary hover:bg-surface-secondary transition-colors"
+                          title="Open OpenClaw Dashboard"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          Dashboard
+                        </button>
+                      )}
+                    </>
                   )}
                   {isBooting(agent.state) ? (
                     <span className="flex-1 px-3 py-1.5 rounded-lg text-xs font-medium text-[#f0c56c] flex items-center justify-center gap-1.5 bg-[#f0c56c]/10 border border-[#f0c56c]/20">
