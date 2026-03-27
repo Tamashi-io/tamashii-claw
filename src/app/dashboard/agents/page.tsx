@@ -10,8 +10,21 @@ import { ConfirmDialog } from "@/components/dashboard/ConfirmDialog";
 import { UpgradeRequiredModal } from "@/components/dashboard/UpgradeRequiredModal";
 import { AgentCardSkeleton } from "@/components/dashboard/Skeleton";
 
-/** Default OpenClaw container image (must match HyperCLI SDK DEFAULT_OPENCLAW_IMAGE) */
-const DEFAULT_OPENCLAW_IMAGE = "ghcr.io/hypercli/hypercli-openclaw:prod";
+/** Agent image types available for deployment */
+const AGENT_TYPES = [
+  {
+    id: "openclaw",
+    label: "OpenClaw",
+    description: "General-purpose AI agent with built-in inference",
+    icon: "🤖",
+  },
+  {
+    id: "tradingclaw",
+    label: "TradingClaw",
+    description: "Crypto trading agent with Safe wallet & DEX integration",
+    icon: "📈",
+  },
+] as const;
 
 interface Agent {
   id: string;
@@ -82,6 +95,7 @@ export default function AgentsPage() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [preset, setPreset] = useState(0); // default Small
+  const [agentType, setAgentType] = useState("openclaw");
 
   // Whether the current plan is a paid plan (not "free")
   const [hasPaidPlan, setHasPaidPlan] = useState(false);
@@ -212,12 +226,13 @@ export default function AgentsPage() {
           cpu_millicores: cpu,
           memory_mib: memory,
           start: true,
-          config: { image: DEFAULT_OPENCLAW_IMAGE },
+          agentType,
         }),
       });
       setShowCreate(false);
       setNewName("");
       setPreset(0);
+      setAgentType("openclaw");
       setCreateError(null);
       await loadAgents();
     } catch (err) {
@@ -240,9 +255,7 @@ export default function AgentsPage() {
       const token = await getToken();
       await apiFetch(`/agents/${id}/start`, token, {
         method: "POST",
-        body: JSON.stringify({
-          config: { image: DEFAULT_OPENCLAW_IMAGE },
-        }),
+        body: JSON.stringify({}),
       });
       await loadAgents();
     } catch (err) {
@@ -357,6 +370,26 @@ export default function AgentsPage() {
                   placeholder="my-agent"
                   className="w-full px-3 py-2 rounded-lg bg-surface-low border border-border text-foreground text-sm placeholder:text-text-muted focus:outline-none focus:border-primary"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm text-text-secondary mb-1.5">Agent Type</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {AGENT_TYPES.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => setAgentType(t.id)}
+                      className={`p-3 rounded-lg border text-left transition-colors ${
+                        agentType === t.id
+                          ? "border-primary bg-primary/10 text-foreground"
+                          : "border-border bg-surface-low text-text-secondary hover:border-border-medium"
+                      }`}
+                    >
+                      <div className="text-sm font-medium">{t.icon} {t.label}</div>
+                      <div className="text-xs text-text-muted mt-1">{t.description}</div>
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div>
