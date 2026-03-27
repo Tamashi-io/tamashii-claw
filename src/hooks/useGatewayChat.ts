@@ -252,6 +252,10 @@ if 'requirePairing' in a:
  a.pop('requirePairing'); changed=True
 if 'providers' in c:
  c.pop('providers'); changed=True
+ch=c.get('channels',{})
+for name in ch:
+ if isinstance(ch[name],dict) and ch[name].get('enabled')==False:
+  ch[name]['enabled']=True; changed=True
 ui=gw.setdefault('controlUi',{})
 o=ui.get('allowedOrigins',[])
 for x in ['${browserOrigin}','${agentOrigin}','http://localhost:3000']:
