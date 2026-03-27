@@ -245,11 +245,11 @@ for k in ['requireDeviceIdentity']:
  if k in gw: gw.pop(k); changed=True
  if k in gw.get('auth',{}): gw['auth'].pop(k); changed=True
  if k in gw.get('controlUi',{}): gw['controlUi'].pop(k); changed=True
-if not gw.get('autoApprovePairing'):
- gw['autoApprovePairing']=True; changed=True
+if 'autoApprovePairing' in gw:
+ gw.pop('autoApprovePairing'); changed=True
 a=gw.setdefault('auth',{})
-if a.get('requirePairing')!=False:
- a['requirePairing']=False; changed=True
+if 'requirePairing' in a:
+ a.pop('requirePairing'); changed=True
 if 'providers' in c:
  c.pop('providers'); changed=True
 ui=gw.setdefault('controlUi',{})
@@ -277,7 +277,14 @@ else:
         );
         const preResult = (preResp.stdout ?? preResp.output ?? "").trim();
         if (preResult === "fixed") {
-          console.log("[gateway] Pre-flight config fix applied, waiting for gateway restart...");
+          console.log("[gateway] Pre-flight config fix applied, running doctor --fix...");
+          try {
+            await apiFetch(`/agents/${agent.id}/exec`, prefixToken, {
+              method: "POST",
+              body: JSON.stringify({ command: "openclaw doctor --fix 2>&1 || true", timeout: 15 }),
+            });
+          } catch {}
+          console.log("[gateway] Waiting for gateway restart...");
           await new Promise((r) => setTimeout(r, 10_000));
         } else {
           console.log("[gateway] Pre-flight config check:", preResult);
