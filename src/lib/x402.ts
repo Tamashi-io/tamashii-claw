@@ -267,7 +267,7 @@ function ensureLiFiConfig() {
   const provider = getProvider();
 
   createLiFiConfig({
-    integrator: "TamashiiClaw",
+    integrator: "lifi-api",
     providers: [
       EVM({
         getWalletClient: async () => {
