@@ -7,7 +7,7 @@ import {
   http,
   type WalletClient,
 } from "viem";
-import { base, bsc } from "viem/chains";
+import { base } from "viem/chains";
 import type { Chain } from "viem";
 import { wrapAxiosWithPayment, x402Client } from "@x402/axios";
 import { ExactEvmScheme, toClientEvmSigner } from "@x402/evm";
@@ -17,8 +17,10 @@ import {
   convertQuoteToRoute,
   executeRoute,
   EVM,
+  Solana as LiFiSolana,
   type RouteExtended,
 } from "@lifi/sdk";
+import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
 import { API_BASE } from "./api";
 
 /** Backend API for payment proxying */
@@ -26,45 +28,64 @@ const X402_PROXY_BASE =
   process.env.NEXT_PUBLIC_TAMASHIICLAW_API_URL || "/api";
 
 // ---------------------------------------------------------------------------
-// Chain configs
+// Solana config
 // ---------------------------------------------------------------------------
 
-export type NetworkId = "base" | "bnb";
+/** Solana chain ID used by LI.FI */
+const SOLANA_CHAIN_ID = 1151111081099710;
 
-export const NETWORKS: Record<
-  NetworkId,
-  {
-    chain: typeof base | typeof bsc;
-    chainIdHex: string;
-    name: string;
-    rpcUrl: string;
-    blockExplorer: string;
-    nativeCurrency: { name: string; symbol: string; decimals: number };
-    usdcAddress: string;
+/** USDC-SPL on Solana */
+const SOLANA_USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+
+/** SOL native token address (LI.FI convention) */
+const SOLANA_NATIVE = "11111111111111111111111111111111";
+
+/** Base USDC address (destination) */
+const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+
+/** Base chain ID */
+const BASE_CHAIN_ID = 8453;
+
+/** Operator wallet on Base that receives swap proceeds */
+const OPERATOR_WALLET =
+  process.env.NEXT_PUBLIC_X402_WALLET_ADDRESS || "";
+
+export type SolPayToken = "sol" | "usdc";
+
+// ---------------------------------------------------------------------------
+// Solana Wallet
+// ---------------------------------------------------------------------------
+
+interface SolanaWalletState {
+  adapter: PhantomWalletAdapter;
+  address: string;
+}
+
+let solWalletState: SolanaWalletState | null = null;
+
+export async function connectSolanaWallet(): Promise<SolanaWalletState> {
+  if (solWalletState?.adapter.connected) return solWalletState;
+
+  const adapter = new PhantomWalletAdapter();
+  await adapter.connect();
+
+  if (!adapter.publicKey) {
+    throw new Error("Failed to connect Solana wallet");
   }
-> = {
-  base: {
-    chain: base,
-    chainIdHex: "0x2105",
-    name: "Base",
-    rpcUrl: "https://mainnet.base.org",
-    blockExplorer: "https://basescan.org",
-    nativeCurrency: { name: "Ethereum", symbol: "ETH", decimals: 18 },
-    usdcAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-  },
-  bnb: {
-    chain: bsc,
-    chainIdHex: "0x38",
-    name: "BNB Chain",
-    rpcUrl: "https://bsc-dataseed.binance.org",
-    blockExplorer: "https://bscscan.com",
-    nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
-    usdcAddress: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
-  },
-};
+
+  solWalletState = {
+    adapter,
+    address: adapter.publicKey.toBase58(),
+  };
+  return solWalletState;
+}
+
+export function getSolanaWalletState(): SolanaWalletState | null {
+  return solWalletState;
+}
 
 // ---------------------------------------------------------------------------
-// Wallet
+// EVM wallet (kept for Base — used by x402 direct payment if needed)
 // ---------------------------------------------------------------------------
 
 interface EthereumProvider {
@@ -73,93 +94,13 @@ interface EthereumProvider {
   isMetaMask?: boolean;
 }
 
-interface WalletState {
-  client: WalletClient;
-  address: string;
-  networkId: NetworkId;
-}
-
-let walletState: WalletState | null = null;
-
-function getProvider(): EthereumProvider {
+function getEvmProvider(): EthereumProvider | null {
   const win = window as Window & { ethereum?: EthereumProvider };
-  if (!win.ethereum) {
-    throw new Error("Please install MetaMask or another Ethereum wallet");
-  }
-  return win.ethereum;
-}
-
-/** Ensure wallet is on the specified network. Prompts switch/add if not. */
-async function ensureNetwork(
-  provider: EthereumProvider,
-  networkId: NetworkId,
-): Promise<void> {
-  const net = NETWORKS[networkId];
-  const chainId = (await provider.request({
-    method: "eth_chainId",
-  })) as string;
-
-  if (chainId.toLowerCase() === net.chainIdHex.toLowerCase()) return;
-
-  try {
-    await provider.request({
-      method: "wallet_switchEthereumChain",
-      params: [{ chainId: net.chainIdHex }],
-    });
-  } catch (err: unknown) {
-    const switchError = err as { code?: number };
-    if (switchError.code === 4902) {
-      await provider.request({
-        method: "wallet_addEthereumChain",
-        params: [
-          {
-            chainId: net.chainIdHex,
-            chainName: net.name,
-            nativeCurrency: net.nativeCurrency,
-            rpcUrls: [net.rpcUrl],
-            blockExplorerUrls: [net.blockExplorer],
-          },
-        ],
-      });
-    } else {
-      throw err;
-    }
-  }
-}
-
-export async function connectWallet(
-  networkId: NetworkId = "base",
-): Promise<WalletState> {
-  // If already connected to the right network, reuse
-  if (walletState && walletState.networkId === networkId) return walletState;
-
-  const provider = getProvider();
-
-  const accounts = (await provider.request({
-    method: "eth_requestAccounts",
-  })) as string[];
-
-  if (!accounts?.length) throw new Error("No accounts found");
-
-  await ensureNetwork(provider, networkId);
-
-  const net = NETWORKS[networkId];
-  const client = createWalletClient({
-    account: accounts[0] as `0x${string}`,
-    chain: net.chain,
-    transport: custom(provider),
-  });
-
-  walletState = { client, address: accounts[0], networkId };
-  return walletState;
-}
-
-export function getWalletState(): WalletState | null {
-  return walletState;
+  return win.ethereum ?? null;
 }
 
 // ---------------------------------------------------------------------------
-// x402 payment client (Base only — direct x402)
+// x402 payment client (Base only — for server-side subscribe)
 // ---------------------------------------------------------------------------
 
 let paymentApi: AxiosInstance | null = null;
@@ -204,33 +145,72 @@ function buildPaymentApi(wallet: WalletClient): AxiosInstance {
   return wrapAxiosWithPayment(instance, client);
 }
 
-/**
- * Subscribe via x402 USDC payment on Base (direct).
- */
-export async function x402Subscribe(
-  planId: string,
-  token?: string,
-): Promise<{ ok: boolean; plan_id: string; expires_at: string }> {
-  const wallet = await connectWallet("base");
+// ---------------------------------------------------------------------------
+// LI.FI SDK config
+// ---------------------------------------------------------------------------
 
-  await ensureNetwork(getProvider(), "base");
+let lifiConfigured = false;
 
-  if (!paymentApi) {
-    paymentApi = buildPaymentApi(wallet.client);
+function ensureLiFiConfig(solanaAdapter: PhantomWalletAdapter) {
+  if (lifiConfigured) return;
+
+  const evmProvider = getEvmProvider();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const providers: any[] = [
+    // Solana provider for source chain
+    LiFiSolana({
+      getWalletAdapter: async () => solanaAdapter,
+    }),
+  ];
+
+  // Add EVM provider if available (for Base destination receiving)
+  if (evmProvider) {
+    providers.push(
+      EVM({
+        getWalletClient: async () => {
+          const accounts = (await evmProvider.request({
+            method: "eth_requestAccounts",
+          })) as string[];
+          return createWalletClient({
+            account: accounts[0] as `0x${string}`,
+            chain: base,
+            transport: custom(evmProvider),
+          });
+        },
+        switchChain: async (chainId: number) => {
+          const hexId = `0x${chainId.toString(16)}`;
+          await evmProvider.request({
+            method: "wallet_switchEthereumChain",
+            params: [{ chainId: hexId }],
+          });
+          const accounts = (await evmProvider.request({
+            method: "eth_requestAccounts",
+          })) as string[];
+          const chain: Chain = base;
+          return createWalletClient({
+            account: accounts[0] as `0x${string}`,
+            chain,
+            transport: custom(evmProvider),
+          });
+        },
+      }),
+    );
   }
 
-  const headers: Record<string, string> = {};
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
+  createLiFiConfig({
+    integrator: "comput3claw",
+    apiKey: "78f7f602-5c2f-4680-983d-ede8cb278ba1.f4bb8d00-3ac5-46a8-88a0-ff8db370c98a",
+    providers,
+  });
 
-  const res = await paymentApi.post(`/x402/${planId}`, {}, { headers });
-  return res.data;
+  lifiConfigured = true;
+  console.log("[lifi] SDK configured with Solana + EVM providers");
 }
 
 // ---------------------------------------------------------------------------
 // Cross-chain swap + subscribe via LI.FI SDK
-// (BNB Chain → Base USDC → operator wallet → server-side x402)
+// (Solana → Base USDC → operator wallet → server-side x402)
 // ---------------------------------------------------------------------------
 
 export type SwapStep =
@@ -243,116 +223,22 @@ export type SwapStep =
   | "done"
   | "error";
 
-/** LI.FI uses the zero address for native tokens (BNB, ETH, etc.) */
-const NATIVE_TOKEN_ADDRESS = "0x0000000000000000000000000000000000000000";
-
-export type BnbPayToken = "usdc" | "bnb";
-
-/** Operator wallet on Base that receives swap proceeds */
-const OPERATOR_WALLET =
-  process.env.NEXT_PUBLIC_X402_WALLET_ADDRESS || "";
-
-/** Viem chains for LI.FI SDK switchChain hook */
-const VIEM_CHAINS: Chain[] = [base, bsc];
-
-let lifiConfigured = false;
-
 /**
- * Initialize LI.FI SDK with the user's injected wallet.
- * Must be called after the user connects their wallet.
- */
-function ensureLiFiConfig() {
-  if (lifiConfigured) return;
-
-  const provider = getProvider();
-
-  createLiFiConfig({
-    integrator: "tamashiiclaw",
-    apiKey: "78f7f602-5c2f-4680-983d-ede8cb278ba1.f4bb8d00-3ac5-46a8-88a0-ff8db370c98a",
-    providers: [
-      EVM({
-        getWalletClient: async () => {
-          // Return a viem WalletClient using the current injected provider
-          const accounts = (await provider.request({
-            method: "eth_requestAccounts",
-          })) as string[];
-          const chainIdHex = (await provider.request({
-            method: "eth_chainId",
-          })) as string;
-          const chainId = parseInt(chainIdHex, 16);
-          const chain = VIEM_CHAINS.find((c) => c.id === chainId) || bsc;
-          return createWalletClient({
-            account: accounts[0] as `0x${string}`,
-            chain,
-            transport: custom(provider),
-          });
-        },
-        switchChain: async (chainId: number) => {
-          const chain = VIEM_CHAINS.find((c) => c.id === chainId);
-          if (!chain) throw new Error(`Unsupported chain: ${chainId}`);
-          const hexId = `0x${chainId.toString(16)}`;
-          try {
-            await provider.request({
-              method: "wallet_switchEthereumChain",
-              params: [{ chainId: hexId }],
-            });
-          } catch (err: unknown) {
-            const switchError = err as { code?: number };
-            if (switchError.code === 4902) {
-              const net = Object.values(NETWORKS).find(
-                (n) => n.chain.id === chainId,
-              );
-              if (net) {
-                await provider.request({
-                  method: "wallet_addEthereumChain",
-                  params: [
-                    {
-                      chainId: hexId,
-                      chainName: net.name,
-                      nativeCurrency: net.nativeCurrency,
-                      rpcUrls: [net.rpcUrl],
-                      blockExplorerUrls: [net.blockExplorer],
-                    },
-                  ],
-                });
-              }
-            } else {
-              throw err;
-            }
-          }
-          const accounts = (await provider.request({
-            method: "eth_requestAccounts",
-          })) as string[];
-          return createWalletClient({
-            account: accounts[0] as `0x${string}`,
-            chain,
-            transport: custom(provider),
-          });
-        },
-      }),
-    ],
-  });
-
-  lifiConfigured = true;
-  console.log("[lifi] SDK configured");
-}
-
-/**
- * Full BNB swap + subscribe flow using LI.FI SDK:
- * 1. Connect wallet on BNB
+ * Full Solana swap + subscribe flow using LI.FI SDK:
+ * 1. Connect Phantom wallet
  * 2. LI.FI SDK: getQuote → convertQuoteToRoute → executeRoute
- *    (handles approvals, gas, chain switching, tx submission, status tracking)
+ *    (handles approvals, swaps, bridging, tx submission, status tracking)
  * 3. Backend does server-side x402 subscribe with the operator wallet
  *
- * For native BNB: uses toAmount so LI.FI calculates exact BNB needed.
- * For USDC: uses fromAmount (18-decimal BSC-Peg USDC).
+ * For SOL: uses toAmount so LI.FI calculates exact SOL needed.
+ * For USDC-SPL: uses fromAmount (6-decimal USDC on Solana).
  */
 export async function swapAndSubscribe(
   planId: string,
   amountUsd: number,
   token?: string,
   onStep?: (step: SwapStep, detail?: string) => void,
-  payToken: BnbPayToken = "usdc",
+  payToken: SolPayToken = "sol",
 ): Promise<{ ok: boolean; plan_id: string; expires_at: string }> {
   if (!OPERATOR_WALLET) {
     throw new Error("Operator wallet not configured (NEXT_PUBLIC_X402_WALLET_ADDRESS)");
@@ -360,17 +246,14 @@ export async function swapAndSubscribe(
 
   onStep?.("quoting");
 
-  // 1. Connect wallet on BNB
-  const wallet = await connectWallet("bnb");
+  // 1. Connect Solana wallet
+  const wallet = await connectSolanaWallet();
 
-  // 2. Init LI.FI SDK with user's wallet
-  ensureLiFiConfig();
+  // 2. Init LI.FI SDK with Solana adapter
+  ensureLiFiConfig(wallet.adapter);
 
   // 3. Get quote from LI.FI SDK
-  //    For native BNB we use toAmount (let LI.FI calculate BNB needed).
-  //    For USDC we use fromAmount (exact USDC amount on BSC).
-  const fromToken =
-    payToken === "bnb" ? NATIVE_TOKEN_ADDRESS : NETWORKS.bnb.usdcAddress;
+  const fromToken = payToken === "sol" ? SOLANA_NATIVE : SOLANA_USDC;
 
   // Base USDC has 6 decimals
   const toAmountUsdc = String(amountUsd * 1_000_000);
@@ -378,33 +261,33 @@ export async function swapAndSubscribe(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let quoteParams: any;
 
-  if (payToken === "bnb") {
-    // toAmount mode: "deliver X USDC on Base, calculate BNB needed"
+  if (payToken === "sol") {
+    // toAmount mode: "deliver X USDC on Base, calculate SOL needed"
     quoteParams = {
-      fromChain: 56,
-      toChain: 8453,
+      fromChain: SOLANA_CHAIN_ID,
+      toChain: BASE_CHAIN_ID,
       fromToken,
-      toToken: NETWORKS.base.usdcAddress,
+      toToken: BASE_USDC,
       toAmount: toAmountUsdc,
       fromAddress: wallet.address,
       toAddress: OPERATOR_WALLET,
       slippage: 0.03, // 3% slippage
     };
-    console.log(`[swap] Requesting toAmount quote: ${amountUsd} USDC on Base, pay with BNB`);
+    console.log(`[swap] Requesting toAmount quote: ${amountUsd} USDC on Base, pay with SOL`);
   } else {
-    // fromAmount mode: "send X USDC from BSC" (18 decimals)
-    const fromAmount = String(BigInt(amountUsd) * BigInt(10 ** 18));
+    // fromAmount mode: "send X USDC from Solana" (6 decimals on Solana too)
+    const fromAmount = String(amountUsd * 1_000_000);
     quoteParams = {
-      fromChain: 56,
-      toChain: 8453,
+      fromChain: SOLANA_CHAIN_ID,
+      toChain: BASE_CHAIN_ID,
       fromToken,
-      toToken: NETWORKS.base.usdcAddress,
+      toToken: BASE_USDC,
       fromAmount,
       fromAddress: wallet.address,
       toAddress: OPERATOR_WALLET,
       slippage: 0.005, // 0.5% slippage for stablecoin
     };
-    console.log(`[swap] Requesting fromAmount quote: ${amountUsd} USDC BSC → Base`);
+    console.log(`[swap] Requesting fromAmount quote: ${amountUsd} USDC Solana → Base`);
   }
 
   const quote = await getLiFiQuote(quoteParams);
@@ -415,28 +298,23 @@ export async function swapAndSubscribe(
     toAmount: quote.estimate.toAmount,
     toAmountMin: quote.estimate.toAmountMin,
     tool: quote.tool,
-    approvalAddress: quote.estimate.approvalAddress,
   });
 
   // 4. Convert quote to route and execute via SDK
-  //    SDK handles: approvals, gas estimation, tx submission, status polling
   const route = convertQuoteToRoute(quote);
   let txHash = "";
 
   try {
     const executedRoute: RouteExtended = await executeRoute(route, {
       updateRouteHook(updatedRoute) {
-        // Map SDK execution progress to our SwapStep for the UI
         for (const step of updatedRoute.steps) {
           if (!step.execution?.process) continue;
           for (const process of step.execution.process) {
-            // Capture tx hash
             if (process.txHash && !txHash) {
               txHash = process.txHash;
             }
 
-            // Log all process updates for debugging
-            console.log(`[swap] Process: type=${process.type} status=${process.status} txHash=${process.txHash || "—"}`);
+            console.log(`[swap] Process: type=${process.type} status=${process.status} txHash=${process.txHash || "\u2014"}`);
 
             switch (process.type) {
               case "TOKEN_ALLOWANCE":
@@ -461,7 +339,6 @@ export async function swapAndSubscribe(
       },
     });
 
-    // Extract tx hash from the executed route if not captured yet
     if (!txHash) {
       for (const step of executedRoute.steps) {
         const proc = step.execution?.process?.find((p) => p.txHash);
@@ -472,13 +349,10 @@ export async function swapAndSubscribe(
       }
     }
   } catch (err: unknown) {
-    // Log detailed error info for debugging
     const error = err as { message?: string; code?: string; step?: unknown; process?: unknown };
     console.error("[swap] executeRoute failed:", {
       message: error.message,
       code: error.code,
-      step: error.step,
-      process: error.process,
       txHash,
       raw: err,
     });
@@ -502,7 +376,6 @@ export async function swapAndSubscribe(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  // Send HyperClaw net amount (excl. platform fee) for server-side x402 subscribe
   const HYPERCLAW_AMOUNTS: Record<string, number> = {
     "1aiu": 20.40,
     "2aiu": 40,
@@ -512,10 +385,16 @@ export async function swapAndSubscribe(
   const hcAmount = HYPERCLAW_AMOUNTS[planId] ?? amountUsd;
   const amountUsdc = String(Math.round(hcAmount * 1_000_000));
   console.log("[swap] Calling swap-subscribe endpoint:", { planId, txHash, amountUsdc, hcAmount });
+
   const res = await fetch(`${API_BASE}/x402/swap-subscribe`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ planId, txHash, fromChainId: 56, amount: amountUsdc }),
+    body: JSON.stringify({
+      planId,
+      txHash,
+      fromChainId: SOLANA_CHAIN_ID,
+      amount: amountUsdc,
+    }),
   });
 
   if (!res.ok) {

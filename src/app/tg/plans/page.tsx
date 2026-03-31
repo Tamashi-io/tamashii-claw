@@ -220,7 +220,7 @@ export default function TgPlansPage() {
         {tonAddress ? (
           <div className="bg-white/5 rounded-xl px-4 py-2.5 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Wallet className="w-4 h-4 text-cyan-400" />
+              <Wallet className="w-4 h-4 text-orange-400" />
               <span className="text-xs text-gray-300">
                 {tonAddress.slice(0, 6)}...{tonAddress.slice(-4)}
               </span>
@@ -228,7 +228,7 @@ export default function TgPlansPage() {
             <TonConnectButton className="ton-connect-btn-sm" />
           </div>
         ) : (
-          <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-xl p-4 text-center">
+          <div className="bg-orange-500/10 border border-orange-500/30 rounded-xl p-4 text-center">
             <p className="text-sm text-gray-300 mb-3">Connect your TON wallet to subscribe</p>
             <TonConnectButton />
           </div>
@@ -248,13 +248,13 @@ export default function TgPlansPage() {
                 key={plan.id}
                 className={`rounded-xl p-4 border ${
                   plan.highlighted
-                    ? "bg-cyan-500/10 border-cyan-500/30"
+                    ? "bg-orange-500/10 border-orange-500/30"
                     : "bg-white/5 border-white/10"
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    {plan.highlighted && <Crown className="w-4 h-4 text-cyan-400" />}
+                    {plan.highlighted && <Crown className="w-4 h-4 text-orange-400" />}
                     <h3 className="text-sm font-bold">{plan.name}</h3>
                   </div>
                   <span className="text-lg font-bold">
@@ -283,7 +283,7 @@ export default function TgPlansPage() {
                       ? "bg-green-500/20 text-green-400"
                       : paymentStep === "error"
                         ? "bg-red-500/20 text-red-400"
-                        : "bg-cyan-500/20 text-cyan-400"
+                        : "bg-orange-500/20 text-orange-400"
                   }`}>
                     {paymentStep !== "done" && paymentStep !== "error" && (
                       <Loader2 className="w-3 h-3 animate-spin" />
@@ -294,7 +294,7 @@ export default function TgPlansPage() {
                   <button
                     onClick={() => subscribe(plan)}
                     disabled={!!payingPlanId}
-                    className="w-full bg-cyan-500 text-white rounded-lg py-2 text-xs font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+                    className="w-full bg-orange-500 text-white rounded-lg py-2 text-xs font-medium disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     <Wallet className="w-3 h-3" />
                     {tonAddress ? `Pay with USDT — $${plan.price}` : "Connect Wallet"}

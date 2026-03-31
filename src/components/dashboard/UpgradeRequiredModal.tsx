@@ -114,7 +114,7 @@ export function UpgradeRequiredModal({
                       key={plan.id}
                       className={`p-4 rounded-lg border transition-all ${
                         plan.highlighted
-                          ? "border-lime/40 bg-lime/5"
+                          ? "border-primary/40 bg-primary/5"
                           : "border-border bg-surface-low/50"
                       }`}
                     >
@@ -125,7 +125,7 @@ export function UpgradeRequiredModal({
                               {plan.name}
                             </span>
                             {plan.highlighted && (
-                              <span className="text-[10px] font-semibold text-primary bg-lime/10 px-2 py-0.5 rounded-full">
+                              <span className="text-[10px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
                                 Popular
                               </span>
                             )}

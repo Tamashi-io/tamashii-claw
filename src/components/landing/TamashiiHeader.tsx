@@ -7,8 +7,9 @@ import { useTamashiiAuth } from "@/components/TamashiiAuthProvider";
 
 const navLinks = [
   { label: "Features", href: "#features" },
+  { label: "Models", href: "#models" },
   { label: "Pricing", href: "#pricing" },
-  { label: "Docs", href: "#", external: false },
+  { label: "Docs", href: "#" },
 ];
 
 export function TamashiiHeader() {
@@ -29,28 +30,32 @@ export function TamashiiHeader() {
         mobileOpen
           ? "bg-background border-b border-border"
           : scrolled
-            ? "bg-background/80 backdrop-blur-lg border-b border-border"
-            : "bg-transparent"
+            ? "bg-background/95 backdrop-blur-sm border-b border-border"
+            : "bg-background"
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <a href="/" className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                <path d="M2 17l10 5 10-5" />
+                <path d="M2 12l10 5 10-5" />
+              </svg>
+            </div>
             <span className="text-xl font-bold">
-              <span className="text-foreground">Tamashii</span>
+              <span className="text-foreground">Comput3</span>
               <span className="text-primary">Claw</span>
             </span>
           </a>
 
-          <nav className="hidden md:flex items-center gap-8">
+          <nav className="hidden lg:flex items-center gap-6">
             {navLinks.map((link) => (
               <a
                 key={link.label}
                 href={link.href}
                 className="nav-link text-sm font-medium"
-                {...(link.external
-                  ? { target: "_blank", rel: "noopener noreferrer" }
-                  : {})}
               >
                 {link.label}
               </a>
@@ -60,31 +65,23 @@ export function TamashiiHeader() {
           <div className="hidden md:flex items-center gap-3">
             {isAuthenticated ? (
               <button
-                onClick={() => window.location.href = "https://claw.tamashi.io/dashboard"}
-                className="btn-primary px-4 py-2 rounded-lg text-sm font-medium"
+                onClick={() => window.location.href = "/dashboard"}
+                className="btn-primary px-5 py-2 rounded-full text-sm font-medium"
               >
-                Launch App
+                Console
               </button>
             ) : (
-              <>
-                <button
-                  onClick={login}
-                  className="text-text-secondary hover:text-foreground text-sm font-medium transition-colors"
-                >
-                  Sign In
-                </button>
-                <button
-                  onClick={login}
-                  className="btn-primary px-4 py-2 rounded-lg text-sm font-medium"
-                >
-                  Get Started
-                </button>
-              </>
+              <button
+                onClick={login}
+                className="btn-primary px-5 py-2 rounded-full text-sm font-medium"
+              >
+                Login
+              </button>
             )}
           </div>
 
           <button
-            className="md:hidden p-2 text-text-secondary hover:text-foreground transition-colors"
+            className="lg:hidden p-2 text-text-secondary hover:text-foreground transition-colors"
             onClick={() => setMobileOpen(!mobileOpen)}
           >
             {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -92,7 +89,7 @@ export function TamashiiHeader() {
         </div>
 
         {mobileOpen && (
-          <div className="md:hidden pb-4 border-t border-border mt-2 pt-4 bg-background">
+          <div className="lg:hidden pb-4 border-t border-border mt-2 pt-4 bg-background">
             <nav className="flex flex-col gap-3">
               {navLinks.map((link) => (
                 <a
@@ -100,30 +97,18 @@ export function TamashiiHeader() {
                   href={link.href}
                   className="nav-link text-sm font-medium px-2 py-1"
                   onClick={() => setMobileOpen(false)}
-                  {...(link.external
-                    ? { target: "_blank", rel: "noopener noreferrer" }
-                    : {})}
                 >
                   {link.label}
                 </a>
               ))}
             </nav>
             <div className="mt-4 flex flex-col gap-2">
-              {isAuthenticated ? (
-                <button
-                  onClick={() => { setMobileOpen(false); window.location.href = "https://claw.tamashi.io/dashboard"; }}
-                  className="btn-primary px-4 py-2 rounded-lg text-sm font-medium w-full"
-                >
-                  Launch App
-                </button>
-              ) : (
-                <button
-                  onClick={() => { setMobileOpen(false); login(); }}
-                  className="btn-primary px-4 py-2 rounded-lg text-sm font-medium w-full"
-                >
-                  Sign In
-                </button>
-              )}
+              <button
+                onClick={() => { setMobileOpen(false); isAuthenticated ? router.push("/dashboard") : login(); }}
+                className="btn-primary px-5 py-2 rounded-full text-sm font-medium w-full"
+              >
+                {isAuthenticated ? "Console" : "Login"}
+              </button>
             </div>
           </div>
         )}

@@ -3,14 +3,14 @@
 const footerLinks = {
   Product: [
     { label: "Features", href: "#features" },
+    { label: "Models", href: "#models" },
     { label: "Pricing", href: "#pricing" },
-    { label: "Documentation", href: "#" },
-    { label: "API Reference", href: "#" },
+    { label: "API Docs", href: "#" },
   ],
-  Network: [
-    { label: "Tamashii Network", href: "https://tamashi.io" },
-    { label: "TamashiiClaw", href: "/" },
-    { label: "Contact", href: "mailto:support@tamashiiclaw.app" },
+  Company: [
+    { label: "Compute3 Network", href: "#" },
+    { label: "Discord", href: "#" },
+    { label: "Telegram", href: "#" },
   ],
   Legal: [
     { label: "Privacy Policy", href: "/privacy" },
@@ -25,13 +25,13 @@ export function TamashiiFooter() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           <div className="col-span-2 md:col-span-1">
             <span className="text-lg font-bold">
-              <span className="text-foreground">Tamashii</span>
+              <span className="text-foreground">Comput3</span>
               <span className="text-primary">Claw</span>
             </span>
             <p className="text-sm text-text-muted mt-2 leading-relaxed">
-              Decentralized agent infrastructure.
+              Deploy autonomous AI agents
               <br />
-              Powered by the Tamashii Network.
+              on decentralized GPUs.
             </p>
           </div>
 
@@ -58,7 +58,7 @@ export function TamashiiFooter() {
 
         <div className="border-t border-border mt-8 pt-8 text-center">
           <p className="text-xs text-text-muted">
-            &copy; {new Date().getFullYear()} Tamashii Network. All rights reserved.
+            &copy; {new Date().getFullYear()} Comput3Claw. All rights reserved.
           </p>
         </div>
       </div>

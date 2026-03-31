@@ -56,6 +56,9 @@ export function TamashiiAuthProvider({ children }: { children: ReactNode }) {
   const { wallets } = useWallets();
   const [tamashiiUser, setTamashiiUser] = useState<TamashiiUser | null>(null);
 
+  // Stable wallet address ref to avoid infinite loops from useWallets()
+  const walletAddress = wallets?.[0]?.address ?? privyUser?.wallet?.address;
+
   // Map Privy user → TamashiiUser whenever auth state changes
   useEffect(() => {
     if (!authenticated || !privyUser) {
@@ -63,17 +66,12 @@ export function TamashiiAuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const email = privyUser.email?.address;
-    const wallet =
-      wallets?.[0]?.address ??
-      privyUser.wallet?.address;
-
     setTamashiiUser({
       id: privyUser.id,
-      email,
-      walletAddress: wallet,
+      email: privyUser.email?.address,
+      walletAddress,
     });
-  }, [authenticated, privyUser, wallets]);
+  }, [authenticated, privyUser?.id, privyUser?.email?.address, walletAddress]);
 
   const login = useCallback(() => {
     privyLogin();

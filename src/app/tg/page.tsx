@@ -78,7 +78,7 @@ export default function TgHomePage() {
             value={formatNumber(data?.stats.total_tokens ?? 0)}
           />
           <StatCard
-            icon={<Bot className="w-4 h-4 text-cyan-400" />}
+            icon={<Bot className="w-4 h-4 text-orange-400" />}
             label="Requests"
             value={formatNumber(data?.stats.total_requests ?? 0)}
           />
@@ -94,7 +94,7 @@ export default function TgHomePage() {
       <div className="mb-6">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-gray-300">Agents</h2>
-          <Link href="/tg/agents" className="text-cyan-400 text-xs flex items-center gap-1">
+          <Link href="/tg/agents" className="text-orange-400 text-xs flex items-center gap-1">
             Manage <ArrowRight className="w-3 h-3" />
           </Link>
         </div>
@@ -111,7 +111,7 @@ export default function TgHomePage() {
             <p className="text-gray-400 text-sm mb-3">No agents yet</p>
             <Link
               href="/tg/agents"
-              className="inline-block bg-cyan-500 text-white px-4 py-2 rounded-lg text-sm font-medium"
+              className="inline-block bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-medium"
             >
               Create Agent
             </Link>
@@ -126,7 +126,7 @@ export default function TgHomePage() {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <Bot className="w-5 h-5 text-cyan-400" />
+                    <Bot className="w-5 h-5 text-orange-400" />
                     <div>
                       <p className="text-sm font-medium">{agent.name}</p>
                       <p className="text-xs text-gray-500">{agent.id.slice(0, 8)}...</p>
@@ -154,7 +154,7 @@ export default function TgHomePage() {
       {!data?.plan && !loading && (
         <Link
           href="/tg/plans"
-          className="block bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-500/30 rounded-xl p-4 text-center"
+          className="block bg-gradient-to-r from-orange-500/20 to-orange-500/10 border border-orange-500/30 rounded-xl p-4 text-center"
         >
           <p className="text-sm font-medium text-white mb-1">Get Started</p>
           <p className="text-xs text-gray-400">Subscribe to a plan to deploy agents</p>

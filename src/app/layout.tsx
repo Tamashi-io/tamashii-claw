@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import { Syne, Space_Mono } from "next/font/google";
+import { Inter, Space_Mono } from "next/font/google";
 import "./globals.css";
 import { TamashiiProviders } from "@/components/TamashiiProviders";
 
-const syne = Syne({
+const inter = Inter({
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-syne",
+  variable: "--font-inter",
 });
 
 const spaceMono = Space_Mono({
@@ -17,8 +17,8 @@ const spaceMono = Space_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TamashiiClaw - Unlimited Agent Inference",
-  description: "Flat-rate, unlimited LLM inference for AI agents. OpenAI-compatible API on NVIDIA B200 GPUs.",
+  title: "Comput3Claw - Deploy Autonomous AI Agents",
+  description: "Deploy persistent AI agents on decentralized B200 GPUs. Flat-rate inference, OpenAI-compatible API, pay with USDC.",
 };
 
 export default function RootLayout({
@@ -31,7 +31,7 @@ export default function RootLayout({
       <head>
         <link rel="icon" href="/favicon.ico" sizes="any" />
       </head>
-      <body className={`${syne.variable} ${spaceMono.variable} font-sans antialiased overflow-x-hidden`}>
+      <body className={`${inter.variable} ${spaceMono.variable} font-sans antialiased overflow-x-hidden`}>
         <TamashiiProviders>
           {children}
         </TamashiiProviders>

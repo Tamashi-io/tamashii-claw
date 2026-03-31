@@ -2,7 +2,7 @@
 
 import { ReactNode } from "react";
 import { PrivyProvider } from "@privy-io/react-auth";
-import { base, bsc } from "viem/chains";
+import { base } from "viem/chains";
 import { TamashiiAuthProvider } from "./TamashiiAuthProvider";
 
 const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID || "";
@@ -14,13 +14,16 @@ export function TamashiiProviders({ children }: { children: ReactNode }) {
       config={{
         appearance: {
           theme: "dark",
-          accentColor: "#22d3ee",
+          accentColor: "#f97316",
         },
         loginMethods: ["wallet", "email"],
         defaultChain: base,
-        supportedChains: [base, bsc],
+        supportedChains: [base],
         embeddedWallets: {
           ethereum: {
+            createOnLogin: "users-without-wallets",
+          },
+          solana: {
             createOnLogin: "users-without-wallets",
           },
         },

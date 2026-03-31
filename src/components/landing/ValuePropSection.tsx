@@ -1,160 +1,92 @@
 "use client";
 
-import { useRef } from "react";
-import { motion, useInView } from "framer-motion";
-import { Key, Bot, Check } from "lucide-react";
+import { motion } from "framer-motion";
+import { Copy, Check } from "lucide-react";
+import { useState } from "react";
 
-const sides = [
-  {
-    icon: Key,
-    badge: "Inference",
-    title: "API Access",
-    subtitle: "For Developers & Builders",
-    description:
-      "Connect to frontier models through an OpenAI-compatible API. No code changes needed.",
-    benefits: [
-      "Drop-in OpenAI SDK replacement",
-      "Flat-rate — no per-token charges",
-      "Kimi K2.5, GLM-5, MiniMax M2.5",
-      "~36M tokens/hour per AIU",
-    ],
-    cta: { label: "Get API Key", href: "https://claw.tamashi.io/dashboard/keys" },
-    highlighted: false,
-  },
-  {
-    icon: Bot,
-    badge: "Agents",
-    title: "Agent Hosting",
-    subtitle: "For Autonomous Workloads",
-    description:
-      "Deploy persistent AI agents with dedicated CPU, memory, and built-in inference.",
-    benefits: [
-      "24/7 autonomous agent uptime",
-      "Dedicated CPU & memory per agent",
-      "Built-in inference — no external API needed",
-      "Start, stop, and scale on demand",
-    ],
-    cta: { label: "Deploy Agent", href: "https://claw.tamashi.io/dashboard/agents" },
-    highlighted: true,
-  },
-];
+const codeExample = `from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://api.comput3claw.app/v1",
+    api_key="YOUR_API_KEY",
+)
+
+response = client.chat.completions.create(
+    model="kimi-k2.5",
+    messages=[{"role": "user", "content": "Hello!"}],
+)
+print(response.choices[0].message.content)`;
 
 export function ValuePropSection() {
-  const sectionRef = useRef<HTMLElement>(null);
-  const isInView = useInView(sectionRef, { once: true, margin: "-100px" });
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(codeExample);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
-    <section
-      ref={sectionRef}
-      id="value"
-      className="relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8 overflow-hidden"
-    >
-      <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-grid-pattern" />
-
-      <div className="max-w-7xl mx-auto relative">
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 40 }}
-          transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-          className="text-center mb-16"
-        >
-          <h2 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4">
-            Two Ways to{" "}
-            <span className="gradient-text-primary">Build</span>
-          </h2>
-          <p className="text-lg text-text-secondary max-w-2xl mx-auto">
-            Use the API for inference, or deploy full agents on the network.
-            Both run on decentralized B200 GPUs.
-          </p>
-        </motion.div>
-
-        <div className="grid md:grid-cols-2 gap-8">
-          {sides.map((side, index) => {
-            const Icon = side.icon;
-            return (
-              <motion.div
-                key={side.title}
-                initial={{ opacity: 0, y: 30 }}
-                animate={
-                  isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }
-                }
-                transition={{
-                  duration: 0.6,
-                  delay: 0.2 + index * 0.15,
-                  ease: [0.22, 1, 0.36, 1],
-                }}
-                className={`glass-card p-6 sm:p-8 flex flex-col ${
-                  side.highlighted
-                    ? "border-lime/40 shadow-[0_0_40px_rgba(57,255,20,0.08)]"
-                    : ""
-                }`}
-              >
-                <div className="flex items-start gap-4 mb-4">
-                  <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-lime/10 flex items-center justify-center">
-                    <Icon className="w-6 h-6 text-primary" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="text-2xl font-bold text-foreground">
-                        {side.title}
-                      </h3>
-                      <span className="text-xs font-semibold text-primary bg-lime/10 px-2.5 py-0.5 rounded-full">
-                        {side.badge}
-                      </span>
-                    </div>
-                    <p className="text-sm text-text-tertiary">{side.subtitle}</p>
-                  </div>
-                </div>
-
-                <p className="text-text-secondary mb-6 leading-relaxed">
-                  {side.description}
-                </p>
-
-                <ul className="space-y-3 mb-8 flex-1">
-                  {side.benefits.map((benefit) => (
-                    <li
-                      key={benefit}
-                      className="flex items-start gap-2 text-sm text-text-secondary"
-                    >
-                      <Check className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
-                      <span>{benefit}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                <a
-                  href={side.cta.href}
-                  className={`w-full py-2.5 rounded-lg text-sm font-medium transition-all block text-center ${
-                    side.highlighted ? "btn-primary" : "btn-secondary"
-                  }`}
-                >
-                  {side.cta.label}
-                </a>
-              </motion.div>
-            );
-          })}
+    <section className="section-dark py-24">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center mb-16">
+          <motion.h2
+            className="text-4xl md:text-5xl font-bold mb-4"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+          >
+            OpenAI SDK. <span className="gradient-text">Zero Changes.</span>
+          </motion.h2>
+          <motion.p
+            className="text-lg text-text-secondary max-w-2xl mx-auto"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.1 }}
+          >
+            Swap your base URL and you're live. Works with any OpenAI SDK client.
+          </motion.p>
         </div>
 
-        {/* Network connection note */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-          transition={{ duration: 0.6, delay: 0.6 }}
-          className="mt-12 text-center"
+          className="max-w-3xl mx-auto"
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.2 }}
         >
-          <div className="glass-card inline-flex items-center gap-6 px-8 py-4">
-            {["Base", "BNB Chain", "Solana"].map((chain) => (
-              <span
-                key={chain}
-                className="text-sm font-medium text-text-tertiary"
+          <div className="bg-[#252940] rounded-xl overflow-hidden shadow-2xl">
+            <div className="flex items-center justify-between px-6 py-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-red-500/60" />
+                <div className="w-3 h-3 rounded-full bg-yellow-500/60" />
+                <div className="w-3 h-3 rounded-full bg-green-500/60" />
+              </div>
+              <button
+                onClick={handleCopy}
+                className="flex items-center gap-1.5 text-sm text-[#8b8fa0] hover:text-white transition-colors"
               >
-                {chain}
-              </span>
-            ))}
+                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+            <div className="p-6 md:p-8 overflow-x-auto">
+              <pre className="text-sm md:text-base leading-relaxed bg-transparent border-none p-0">
+                <code className="bg-transparent p-0 text-white">
+                  {codeExample.split("\n").map((line, i) => (
+                    <div key={i}>
+                      {line.startsWith("#") ? (
+                        <span className="text-[#6a6a7a]">{line}</span>
+                      ) : (
+                        <span>{line}</span>
+                      )}
+                    </div>
+                  ))}
+                </code>
+              </pre>
+            </div>
           </div>
-          <p className="text-sm text-text-muted mt-3">
-            Pay with USDC on Base, or swap from BNB and Solana via x402
-          </p>
         </motion.div>
       </div>
     </section>

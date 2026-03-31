@@ -28,7 +28,7 @@ export default function TgNav() {
               key={tab.href}
               href={tab.href}
               className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${
-                isActive ? "text-cyan-400" : "text-gray-500"
+                isActive ? "text-orange-400" : "text-gray-500"
               }`}
             >
               <Icon className="w-5 h-5" />

@@ -126,7 +126,7 @@ export default function TgAgentsPage() {
         {canCreate && (
           <button
             onClick={() => setShowCreate(!showCreate)}
-            className="bg-cyan-500 text-white p-2 rounded-lg"
+            className="bg-orange-500 text-white p-2 rounded-lg"
           >
             <Plus className="w-4 h-4" />
           </button>
@@ -141,14 +141,14 @@ export default function TgAgentsPage() {
             placeholder="Agent name"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            className="w-full bg-white/10 text-white rounded-lg px-3 py-2 text-sm mb-3 outline-none focus:ring-1 focus:ring-cyan-400"
+            className="w-full bg-white/10 text-white rounded-lg px-3 py-2 text-sm mb-3 outline-none focus:ring-1 focus:ring-orange-400"
             autoFocus
           />
           <div className="flex gap-2">
             <button
               onClick={createAgent}
               disabled={creating || !newName.trim()}
-              className="flex-1 bg-cyan-500 text-white rounded-lg py-2 text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+              className="flex-1 bg-orange-500 text-white rounded-lg py-2 text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {creating ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -194,7 +194,7 @@ export default function TgAgentsPage() {
               <div key={agent.id} className="bg-white/5 rounded-xl p-4">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-3">
-                    <Bot className="w-5 h-5 text-cyan-400" />
+                    <Bot className="w-5 h-5 text-orange-400" />
                     <div>
                       <p className="text-sm font-medium">{agent.name}</p>
                       <p className="text-xs text-gray-500">{agent.id.slice(0, 12)}...</p>

@@ -1,77 +1,94 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Building2, Moon, DollarSign } from "lucide-react";
-import { fadeInUp, useScrollAnimation } from "@/hooks/useScrollAnimation";
+import { Bot, Code, Wallet } from "lucide-react";
 
-const problems = [
+const features = [
   {
-    icon: Building2,
-    title: "Centralized Control",
-    description:
-      "Training large AI models costs $100M+. Only big tech can afford it, creating gatekeepers.",
+    icon: Bot,
+    title: "Autonomous Agent Hosting",
+    description: "Deploy persistent AI agents that run 24/7. Dedicated CPU, memory, and built-in inference on decentralized GPU infrastructure.",
+    bullets: [
+      "24/7 agent uptime",
+      "Dedicated resources per agent",
+      "Start, stop, and scale on demand",
+    ],
   },
   {
-    icon: Moon,
-    title: "Wasted Compute",
-    description:
-      "Millions of GPUs sit idle 90% of the time. That's trillions of FLOPs going to waste.",
+    icon: Code,
+    title: "OpenAI-Compatible API",
+    description: "Drop-in replacement for any OpenAI SDK client. Zero code changes needed — just swap your base URL and start building.",
+    bullets: [
+      "Works with any OpenAI SDK",
+      "Frontier models included",
+      "Flat-rate, no per-token charges",
+    ],
   },
   {
-    icon: DollarSign,
-    title: "Expensive Access",
-    description:
-      "Cloud GPU prices are 3-5\u00d7 higher than actual costs. Developers pay the premium.",
+    icon: Wallet,
+    title: "Solana Payments",
+    description: "Pay with SOL or USDC on Solana. Automatically swapped and bridged via LI.FI. No credit card required.",
+    bullets: [
+      "Pay in SOL or USDC-SPL",
+      "Auto-bridged to Base via LI.FI",
+      "No credit card or KYC required",
+    ],
   },
 ];
 
 export function ProblemSection() {
-  const { ref, isInView } = useScrollAnimation();
-
   return (
-    <section id="problem" className="py-24 md:py-32 relative">
-      <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8">
-        {/* Header */}
+    <section className="section-light py-24" id="features">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
-          <span className="inline-block px-3 py-1 rounded-full text-xs font-medium tracking-wider uppercase bg-lime/10 text-lime border border-lime/20 mb-4">
-            The Problem
-          </span>
-          <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold">
-            AI Training is <span className="gradient-text">Broken</span>
-          </h2>
+          <motion.h2
+            className="text-4xl md:text-5xl font-bold text-foreground-on-light mb-4"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+          >
+            Why <span className="gradient-text">Comput3Claw</span>
+          </motion.h2>
+          <motion.p
+            className="text-lg text-text-tertiary max-w-2xl mx-auto"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.1 }}
+          >
+            The easiest way to deploy and manage autonomous AI agents
+          </motion.p>
         </div>
 
-        <div
-          ref={ref}
-          className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8"
+        <motion.div
+          className="grid md:grid-cols-3 gap-6"
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.2 }}
         >
-          {problems.map((problem, index) => (
-            <motion.div
-              key={problem.title}
-              initial="hidden"
-              animate={isInView ? "visible" : "hidden"}
-              variants={fadeInUp}
-              transition={{ delay: index * 0.1 }}
-            >
-              <div className="glass-card h-full group relative overflow-hidden border-2 border-border hover:border-lime transition-all duration-300 p-8">
-                {/* Gradient Top Border */}
-                <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-lime to-cyan opacity-0 group-hover:opacity-100 transition-opacity" />
-
-                <div className="mb-4 flex items-center justify-center h-12">
-                  <div className="w-12 h-12 rounded-xl bg-lime/10 border border-lime/20 flex items-center justify-center">
-                    <problem.icon className="w-6 h-6 text-lime" />
-                  </div>
+          {features.map((feature) => (
+            <div key={feature.title} className="card-light p-8 rounded-xl">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <feature.icon className="w-5 h-5 text-primary" />
                 </div>
-                <h3 className="text-2xl font-bold mb-3 text-foreground">
-                  {problem.title}
-                </h3>
-                <p className="text-text-secondary leading-relaxed">
-                  {problem.description}
-                </p>
+                <h3 className="text-xl font-bold text-foreground-on-light">{feature.title}</h3>
               </div>
-            </motion.div>
+              <p className="text-text-tertiary mb-6 leading-relaxed">
+                {feature.description}
+              </p>
+              <ul className="space-y-2">
+                {feature.bullets.map((bullet) => (
+                  <li key={bullet} className="flex items-center gap-2 text-sm text-text-tertiary">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
+                    {bullet}
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </div>
+        </motion.div>
       </div>
     </section>
   );

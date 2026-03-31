@@ -22,10 +22,8 @@ export function PricingSection() {
     <section
       ref={sectionRef}
       id="pricing"
-      className="relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8 overflow-hidden"
+      className="section-dark relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8 overflow-hidden"
     >
-      <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-grid-pattern" />
-
       <div className="max-w-7xl mx-auto relative">
         <motion.div
           initial={{ opacity: 0, y: 40 }}
@@ -35,10 +33,10 @@ export function PricingSection() {
         >
           <h2 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4">
             Predictable{" "}
-            <span className="gradient-text-primary">Pricing</span>
+            <span className="gradient-text">Pricing</span>
           </h2>
           <p className="text-lg text-text-secondary max-w-2xl mx-auto">
-            Flat-rate compute for your agents. No per-token surprises.
+            Flat-rate compute for your workloads. No per-token surprises.
             Scale without limits.
           </p>
         </motion.div>
@@ -54,14 +52,14 @@ export function PricingSection() {
                 delay: 0.2 + index * 0.1,
                 ease: [0.22, 1, 0.36, 1],
               }}
-              className={`glass-card p-6 flex flex-col ${
+              className={`card p-6 flex flex-col ${
                 plan.highlighted
-                  ? "border-lime/40 shadow-[0_0_40px_rgba(57,255,20,0.12)]"
+                  ? "border-primary/40 shadow-[0_0_30px_rgba(249,115,22,0.1)]"
                   : ""
               }`}
             >
               {plan.highlighted && (
-                <div className="text-xs font-semibold text-primary bg-lime/10 px-3 py-1 rounded-full self-start mb-4">
+                <div className="text-xs font-semibold text-primary bg-primary/10 px-3 py-1 rounded-full self-start mb-4">
                   Most Popular
                 </div>
               )}
@@ -102,7 +100,7 @@ export function PricingSection() {
               </ul>
 
               <a
-                href="https://claw.tamashi.io/dashboard/plans"
+                href="/dashboard/plans"
                 className={`w-full py-2.5 rounded-lg text-sm font-medium transition-all block text-center ${
                   plan.highlighted ? "btn-primary" : "btn-secondary"
                 }`}

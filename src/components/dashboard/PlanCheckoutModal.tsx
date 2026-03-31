@@ -6,18 +6,15 @@ import { X, CreditCard, Coins, Wallet, Check, Loader2 } from "lucide-react";
 import { Plan, formatTokens } from "@/lib/format";
 import { apiFetch, getSubscriptionStatus } from "@/lib/api";
 import {
-  connectWallet,
-  getWalletState,
+  connectSolanaWallet,
+  getSolanaWalletState,
   swapAndSubscribe,
-  type NetworkId,
   type SwapStep,
-  type BnbPayToken,
-  NETWORKS,
+  type SolPayToken,
 } from "@/lib/x402";
 
 /** Parse nested x402 / facilitator error into a human-readable message. */
 function parsePaymentError(raw: string): string {
-  // Try to extract errorReason from nested JSON
   const reasonMatch = raw.match(/errorReason[\\"]* *[:=] *[\\"]*(.*?)[\\"]*(?: *[,}])/);
   if (reasonMatch) {
     const reason = reasonMatch[1].replace(/\\\\/g, "");
@@ -30,17 +27,15 @@ function parsePaymentError(raw: string): string {
     return reason;
   }
 
-  // Try to extract top-level error field
   const errorMatch = raw.match(/"error"\s*:\s*"([^"]+)"/);
   if (errorMatch) {
     const msg = errorMatch[1];
     if (msg.includes("Settlement failed")) {
-      return "Payment settlement failed. The facilitator could not process the transaction. Please try again or use a different payment method.";
+      return "Payment settlement failed. Please try again or use a different payment method.";
     }
     return msg;
   }
 
-  // 402 status but no parseable body
   if (raw.includes("402")) {
     return "Payment required but could not be processed. Please try a different payment method.";
   }
@@ -61,7 +56,7 @@ const SWAP_STEP_LABELS: Record<SwapStep, string> = {
   idle: "",
   quoting: "Getting swap quote...",
   approving: "Approve token spend...",
-  swapping: "Confirm swap transaction...",
+  swapping: "Confirm transaction in Phantom...",
   bridging: "Bridging to Base...",
   subscribing: "Activating subscription...",
   done: "Done!",
@@ -75,14 +70,13 @@ export function PlanCheckoutModal({
   getToken,
 }: PlanCheckoutModalProps) {
   const [method, setMethod] = useState<PaymentMethod>("card");
-  const [network, setNetwork] = useState<NetworkId>("base");
-  const [bnbPayToken, setBnbPayToken] = useState<BnbPayToken>("bnb");
+  const [solPayToken, setSolPayToken] = useState<SolPayToken>("sol");
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [swapStep, setSwapStep] = useState<SwapStep>("idle");
   const [walletAddress, setWalletAddress] = useState<string | null>(
-    () => getWalletState()?.address ?? null,
+    () => getSolanaWalletState()?.address ?? null,
   );
 
   const handleClose = () => {
@@ -90,13 +84,12 @@ export function PlanCheckoutModal({
     setError(null);
     setSuccess(false);
     setMethod("card");
-    setNetwork("base");
-    setBnbPayToken("bnb");
+    setSolPayToken("sol");
     setSwapStep("idle");
     onClose();
   };
 
-  /* ── Stripe card checkout ─────────────────────────────────────────── */
+  /* -- Stripe card checkout ------------------------------------------------ */
   const handleCard = async () => {
     setProcessing(true);
     setError(null);
@@ -123,91 +116,30 @@ export function PlanCheckoutModal({
     }
   };
 
-  /* ── Connect wallet ───────────────────────────────────────────────── */
+  /* -- Connect Solana wallet ----------------------------------------------- */
   const handleConnectWallet = async () => {
     setProcessing(true);
     setError(null);
     try {
-      const wallet = await connectWallet(network);
+      const wallet = await connectSolanaWallet();
       setWalletAddress(wallet.address);
     } catch (err: unknown) {
       setError(
-        err instanceof Error ? err.message : "Failed to connect wallet",
+        err instanceof Error ? err.message : "Failed to connect wallet. Is Phantom installed?",
       );
     } finally {
       setProcessing(false);
     }
   };
 
-  /* ── USDC on Base (server-side subscribe — operator wallet pays) ── */
-  const handleCryptoBase = async () => {
-    setProcessing(true);
-    setError(null);
-    try {
-      const token = await getToken();
-      console.log("[checkout] Starting server-side subscribe for plan:", plan.id);
-
-      // Use server-side subscribe endpoint (operator wallet signs x402 payment).
-      // HyperClaw uses variable pricing — send the HyperClaw plan cost (excl. platform fee).
-      // Display prices include ~$5 platform fee; HyperClaw receives the net amount.
-      const HYPERCLAW_AMOUNTS: Record<string, number> = {
-        "1aiu": 20.40,
-        "2aiu": 40,
-        "5aiu": 100,
-        "10aiu": 200,
-      };
-      const hcAmount = HYPERCLAW_AMOUNTS[plan.id] ?? plan.price;
-      // Convert USD to USDC 6-decimal units (e.g. $20.40 → "20400000")
-      const amountUsdc = String(Math.round(hcAmount * 1_000_000));
-      console.log("[checkout] Paying amount:", amountUsdc, `USDC units ($${hcAmount}) for plan:`, plan.id);
-      const result = await apiFetch<{
-        ok?: boolean;
-        key?: string;
-        plan_id?: string;
-        amount_paid?: string;
-        duration_days?: number;
-      }>(`/x402/subscribe/${plan.id}`, token, {
-        method: "POST",
-        body: JSON.stringify({ amount: amountUsdc }),
-      });
-      console.log("[checkout] Subscribe result:", {
-        ok: result.ok,
-        plan_id: result.plan_id,
-        amount_paid: result.amount_paid,
-        duration_days: result.duration_days,
-        hasKey: !!result.key,
-      });
-
-      // Verify subscription was stored in DB
-      try {
-        const sub = await getSubscriptionStatus(token);
-        console.log("[checkout] Subscription status from DB:", sub);
-      } catch (err) {
-        console.warn("[checkout] Could not verify subscription status:", err);
-      }
-
-      setSuccess(true);
-      setTimeout(() => {
-        handleClose();
-        window.location.reload();
-      }, 2000);
-    } catch (err: unknown) {
-      const raw = err instanceof Error ? err.message : String(err);
-      console.error("[checkout] Subscribe failed:", raw);
-      setError(parsePaymentError(raw));
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  /* ── Cross-chain swap from BNB ────────────────────────────────────── */
-  const handleCryptoBnb = async () => {
+  /* -- Solana swap via LI.FI ----------------------------------------------- */
+  const handleCryptoSolana = async () => {
     setProcessing(true);
     setError(null);
     setSwapStep("quoting");
     try {
       const token = await getToken();
-      console.log("[checkout] Starting BNB swap-subscribe for plan:", plan.id, "amount:", plan.price);
+      console.log("[checkout] Starting Solana swap-subscribe for plan:", plan.id, "token:", solPayToken);
       const result = await swapAndSubscribe(
         plan.id,
         plan.price,
@@ -216,11 +148,10 @@ export function PlanCheckoutModal({
           console.log("[checkout] Swap step:", step);
           setSwapStep(step);
         },
-        bnbPayToken,
+        solPayToken,
       );
       console.log("[checkout] Swap-subscribe result:", result);
 
-      // Verify subscription was stored in DB
       try {
         const sub = await getSubscriptionStatus(token);
         console.log("[checkout] Subscription status from DB:", sub);
@@ -248,10 +179,8 @@ export function PlanCheckoutModal({
       handleCard();
     } else if (!walletAddress) {
       handleConnectWallet();
-    } else if (network === "bnb") {
-      handleCryptoBnb();
     } else {
-      handleCryptoBase();
+      handleCryptoSolana();
     }
   };
 
@@ -261,12 +190,9 @@ export function PlanCheckoutModal({
     if (processing && swapStep !== "idle") return SWAP_STEP_LABELS[swapStep];
     if (processing) return "Processing...";
     if (method === "card") return `Pay $${displayPrice} with Card`;
-    if (!walletAddress) return `Connect Wallet (${NETWORKS[network].name})`;
-    if (network === "bnb") {
-      const tokenLabel = bnbPayToken === "bnb" ? "BNB" : "USDC";
-      return `Swap ${tokenLabel} & Pay $${displayPrice}`;
-    }
-    return `Pay $${displayPrice} with USDC`;
+    if (!walletAddress) return "Connect Phantom Wallet";
+    const tokenLabel = solPayToken === "sol" ? "SOL" : "USDC";
+    return `Swap ${tokenLabel} & Pay $${displayPrice}`;
   };
 
   return (
@@ -303,7 +229,7 @@ export function PlanCheckoutModal({
               </div>
 
               {success ? (
-                /* ── Success state ──────────────────────────────────── */
+                /* -- Success state -- */
                 <div className="text-center py-8">
                   <div className="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Check className="w-8 h-8 text-primary" />
@@ -377,62 +303,17 @@ export function PlanCheckoutModal({
                       >
                         <Coins className="w-5 h-5 text-foreground" />
                         <div className="text-sm font-medium text-foreground">
-                          Crypto
+                          Solana
                         </div>
                         <div className="text-xs text-text-muted">
-                          USDC or BNB
+                          SOL or USDC
                         </div>
                       </button>
                     </div>
                   </div>
 
-                  {/* Network selector (crypto only) */}
+                  {/* Token selector (Solana crypto only) */}
                   {method === "crypto" && (
-                    <div className="mb-4">
-                      <label className="block text-xs font-medium text-text-secondary mb-2">
-                        Network
-                      </label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setNetwork("base");
-                            setWalletAddress(null);
-                            setSwapStep("idle");
-                          }}
-                          disabled={processing}
-                          className={`px-3 py-2.5 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                            network === "base"
-                              ? "border-primary/60 bg-primary/10 text-foreground"
-                              : "border-border text-text-muted hover:border-border-medium"
-                          } disabled:opacity-50`}
-                        >
-                          <span className="w-4 h-4 rounded-full bg-[#0052FF] inline-block" />
-                          Base
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setNetwork("bnb");
-                            setWalletAddress(null);
-                            setSwapStep("idle");
-                          }}
-                          disabled={processing}
-                          className={`px-3 py-2.5 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                            network === "bnb"
-                              ? "border-primary/60 bg-primary/10 text-foreground"
-                              : "border-border text-text-muted hover:border-border-medium"
-                          } disabled:opacity-50`}
-                        >
-                          <span className="w-4 h-4 rounded-full bg-[#F0B90B] inline-block" />
-                          BNB Chain
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Token selector (BNB network only) */}
-                  {method === "crypto" && network === "bnb" && (
                     <div className="mb-4">
                       <label className="block text-xs font-medium text-text-secondary mb-2">
                         Pay with
@@ -440,23 +321,23 @@ export function PlanCheckoutModal({
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
-                          onClick={() => setBnbPayToken("bnb")}
+                          onClick={() => setSolPayToken("sol")}
                           disabled={processing}
-                          className={`px-3 py-2 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                            bnbPayToken === "bnb"
-                              ? "border-[#F0B90B]/60 bg-[#F0B90B]/10 text-foreground"
+                          className={`px-3 py-2.5 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                            solPayToken === "sol"
+                              ? "border-primary/60 bg-primary/10 text-foreground"
                               : "border-border text-text-muted hover:border-border-medium"
                           } disabled:opacity-50`}
                         >
-                          <span className="text-base">◆</span>
-                          BNB
+                          <span className="w-4 h-4 rounded-full bg-gradient-to-br from-[#9945FF] to-[#14F195] inline-block" />
+                          SOL
                         </button>
                         <button
                           type="button"
-                          onClick={() => setBnbPayToken("usdc")}
+                          onClick={() => setSolPayToken("usdc")}
                           disabled={processing}
-                          className={`px-3 py-2 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                            bnbPayToken === "usdc"
+                          className={`px-3 py-2.5 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                            solPayToken === "usdc"
                               ? "border-[#2775CA]/60 bg-[#2775CA]/10 text-foreground"
                               : "border-border text-text-muted hover:border-border-medium"
                           } disabled:opacity-50`}
@@ -468,69 +349,63 @@ export function PlanCheckoutModal({
                     </div>
                   )}
 
-                  {/* Crypto wallet status */}
+                  {/* Wallet status */}
                   {method === "crypto" && (
                     <div className="mb-4 p-3 rounded-lg bg-surface-low/50 border border-border text-sm">
                       {walletAddress ? (
                         <div className="flex items-center gap-2 text-text-secondary">
                           <Wallet className="w-4 h-4 text-primary flex-shrink-0" />
                           <span className="font-mono text-xs">
-                            {walletAddress.slice(0, 6)}...
+                            {walletAddress.slice(0, 4)}...
                             {walletAddress.slice(-4)}
                           </span>
                           <span className="text-text-muted ml-auto">
-                            {network === "bnb"
-                              ? bnbPayToken === "bnb"
-                                ? `~$${displayPrice} in BNB`
-                                : `${displayPrice} USDC`
+                            {solPayToken === "sol"
+                              ? `~$${displayPrice} in SOL`
                               : `${displayPrice} USDC`}
-                            {network === "bnb" && " → Base"}
+                            {" \u2192 Base"}
                           </span>
                         </div>
                       ) : (
                         <p className="text-text-muted">
-                          Connect your wallet to pay{" "}
+                          Connect your Phantom wallet to pay{" "}
                           <span className="text-foreground font-medium">
-                            {network === "bnb" && bnbPayToken === "bnb"
-                              ? `~$${displayPrice} in BNB`
+                            {solPayToken === "sol"
+                              ? `~$${displayPrice} in SOL`
                               : `$${displayPrice} USDC`}
                           </span>{" "}
-                          on {NETWORKS[network].name}.
-                          {network === "bnb" && (
-                            <span className="block text-xs mt-1 text-text-tertiary">
-                              {bnbPayToken === "bnb" ? "BNB" : "USDC"} will be
-                              swapped &amp; bridged to Base USDC via LI.FI.
-                            </span>
-                          )}
+                          on Solana.
+                          <span className="block text-xs mt-1 text-text-tertiary">
+                            {solPayToken === "sol" ? "SOL" : "USDC"} will be
+                            swapped &amp; bridged to Base USDC via LI.FI.
+                          </span>
                         </p>
                       )}
                     </div>
                   )}
 
                   {/* Swap progress indicator */}
-                  {method === "crypto" &&
-                    network === "bnb" &&
-                    swapStep !== "idle" && (
-                      <div className="mb-4 p-3 rounded-lg bg-surface-low/50 border border-border">
-                        <div className="flex items-center gap-2 text-sm">
-                          {swapStep !== "done" && swapStep !== "error" && (
-                            <Loader2 className="w-4 h-4 text-primary animate-spin flex-shrink-0" />
-                          )}
-                          {swapStep === "done" && (
-                            <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
-                          )}
-                          <span
-                            className={
-                              swapStep === "error"
-                                ? "text-destructive"
-                                : "text-text-secondary"
-                            }
-                          >
-                            {SWAP_STEP_LABELS[swapStep]}
-                          </span>
-                        </div>
+                  {method === "crypto" && swapStep !== "idle" && (
+                    <div className="mb-4 p-3 rounded-lg bg-surface-low/50 border border-border">
+                      <div className="flex items-center gap-2 text-sm">
+                        {swapStep !== "done" && swapStep !== "error" && (
+                          <Loader2 className="w-4 h-4 text-primary animate-spin flex-shrink-0" />
+                        )}
+                        {swapStep === "done" && (
+                          <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
+                        )}
+                        <span
+                          className={
+                            swapStep === "error"
+                              ? "text-destructive"
+                              : "text-text-secondary"
+                          }
+                        >
+                          {SWAP_STEP_LABELS[swapStep]}
+                        </span>
                       </div>
-                    )}
+                    </div>
+                  )}
 
                   {/* Error */}
                   {error && (

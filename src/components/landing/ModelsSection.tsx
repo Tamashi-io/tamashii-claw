@@ -37,7 +37,7 @@ const MODEL_DISPLAY: Record<
 };
 
 function fmtCtx(n: number | null): string {
-  if (!n) return "—";
+  if (!n) return "\u2014";
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   return `${Math.round(n / 1024)}K`;
 }
@@ -123,10 +123,8 @@ export function ModelsSection() {
     <section
       ref={sectionRef}
       id="models"
-      className="relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8 overflow-hidden bg-background-secondary"
+      className="section-light relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8 overflow-hidden"
     >
-      <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-grid-pattern" />
-
       <div className="max-w-7xl mx-auto relative">
         <motion.div
           initial={{ opacity: 0, y: 40 }}
@@ -134,12 +132,11 @@ export function ModelsSection() {
           transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
           className="text-center mb-16"
         >
-          <h2 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4">
-            Frontier <span className="gradient-text-primary">Models</span>
+          <h2 className="text-4xl sm:text-5xl font-bold tracking-tight text-foreground-on-light mb-4">
+            Frontier <span className="gradient-text">Models</span>
           </h2>
-          <p className="text-lg text-text-secondary max-w-2xl mx-auto">
-            Every model included in every plan. Choose the right one for your
-            agent&apos;s workload.
+          <p className="text-lg text-text-tertiary max-w-2xl mx-auto">
+            Every model included in every plan. Choose the right one for your workload.
           </p>
         </motion.div>
 
@@ -160,17 +157,17 @@ export function ModelsSection() {
                   delay: 0.2 + index * 0.1,
                   ease: [0.22, 1, 0.36, 1],
                 }}
-                className={`glass-card p-6 flex flex-col ${
+                className={`card-light p-6 flex flex-col rounded-xl ${
                   display.highlighted
-                    ? "border-lime/40 shadow-[0_0_40px_rgba(57,255,20,0.12)]"
+                    ? "border-primary/40 shadow-[0_0_30px_rgba(249,115,22,0.1)]"
                     : ""
                 }`}
               >
-                <code className="text-xs text-text-tertiary bg-surface-low px-2.5 py-1 rounded font-mono self-start mb-4">
+                <code className="text-xs text-text-tertiary bg-background-light px-2.5 py-1 rounded font-mono self-start mb-4">
                   {model.id}
                 </code>
 
-                <h3 className="text-lg font-semibold text-foreground">
+                <h3 className="text-lg font-semibold text-foreground-on-light">
                   {display.title}
                 </h3>
                 <p className="text-sm text-text-tertiary mt-1 mb-4">
@@ -178,7 +175,7 @@ export function ModelsSection() {
                 </p>
 
                 <div className="flex items-baseline gap-1 mt-auto mb-1">
-                  <span className="text-3xl font-bold text-foreground">
+                  <span className="text-3xl font-bold text-foreground-on-light">
                     {fmtCtx(model.context_length)}
                   </span>
                   <span className="text-text-muted text-sm">context</span>
@@ -197,7 +194,7 @@ export function ModelsSection() {
                       )}
                       <span
                         className={
-                          cap.active ? "text-text-secondary" : "text-text-muted/50"
+                          cap.active ? "text-text-tertiary" : "text-text-muted/50"
                         }
                       >
                         {cap.label}
@@ -216,7 +213,7 @@ export function ModelsSection() {
           transition={{ duration: 0.6, delay: 0.6 }}
           className="text-center text-sm text-text-muted mt-8"
         >
-          All models available on the Tamashii Network. Included in every plan.
+          All models included in every plan. Powered by the Compute3 Network.
         </motion.p>
       </div>
     </section>
