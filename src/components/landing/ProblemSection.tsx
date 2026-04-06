@@ -47,7 +47,7 @@ export function ProblemSection() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
           >
-            Why <span className="gradient-text">Comput3Claw</span>
+            Why <span className="gradient-text">TamashiiClaw</span>
           </motion.h2>
           <motion.p
             className="text-lg text-text-tertiary max-w-2xl mx-auto"

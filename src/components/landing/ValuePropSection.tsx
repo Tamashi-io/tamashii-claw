@@ -7,7 +7,7 @@ import { useState } from "react";
 const codeExample = `from openai import OpenAI
 
 client = OpenAI(
-    base_url="https://api.comput3claw.app/v1",
+    base_url="https://api.tamashii.io/v1",
     api_key="YOUR_API_KEY",
 )
 

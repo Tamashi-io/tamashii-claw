@@ -199,7 +199,7 @@ function ensureLiFiConfig(solanaAdapter: PhantomWalletAdapter) {
   }
 
   createLiFiConfig({
-    integrator: "comput3claw",
+    integrator: "tamashiiclaw",
     apiKey: "78f7f602-5c2f-4680-983d-ede8cb278ba1.f4bb8d00-3ac5-46a8-88a0-ff8db370c98a",
     providers,
   });

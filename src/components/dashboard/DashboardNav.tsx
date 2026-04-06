@@ -34,7 +34,7 @@ export function DashboardNav() {
           <div className="flex items-center justify-between h-14">
             <div className="flex items-center gap-8">
               <a href="/" className="text-lg font-bold">
-                <span className="text-foreground">Comput3</span>
+                <span className="text-foreground">Tamashii</span>
                 <span className="text-primary">Claw</span>
               </a>
               <nav className="hidden md:flex items-center gap-1">

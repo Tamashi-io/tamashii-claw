@@ -25,7 +25,7 @@ export function TamashiiFooter() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           <div className="col-span-2 md:col-span-1">
             <span className="text-lg font-bold">
-              <span className="text-foreground">Comput3</span>
+              <span className="text-foreground">Tamashii</span>
               <span className="text-primary">Claw</span>
             </span>
             <p className="text-sm text-text-muted mt-2 leading-relaxed">
@@ -58,7 +58,7 @@ export function TamashiiFooter() {
 
         <div className="border-t border-border mt-8 pt-8 text-center">
           <p className="text-xs text-text-muted">
-            &copy; {new Date().getFullYear()} Comput3Claw. All rights reserved.
+            &copy; {new Date().getFullYear()} TamashiiClaw. All rights reserved.
           </p>
         </div>
       </div>
