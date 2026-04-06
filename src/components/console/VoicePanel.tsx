@@ -24,24 +24,19 @@ export function VoicePanel({ getToken }: VoicePanelProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [refFileName, setRefFileName] = useState<string | null>(null);
-  const [refAudioB64, setRefAudioB64] = useState<string | null>(null);
+  const [refAudioFile, setRefAudioFile] = useState<File | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setRefFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = () => {
-      const b64 = (reader.result as string).split(",")[1];
-      setRefAudioB64(b64);
-    };
-    reader.readAsDataURL(file);
+    setRefAudioFile(file);
   };
 
   const generate = async () => {
     if (!text.trim()) return;
     if (mode === "design" && !description.trim()) return;
-    if (mode === "clone" && !refAudioB64) return;
+    if (mode === "clone" && !refAudioFile) return;
 
     setLoading(true);
     setError(null);
@@ -51,24 +46,35 @@ export function VoicePanel({ getToken }: VoicePanelProps) {
     try {
       const token = await getToken();
       let endpoint = "";
-      let body: Record<string, unknown> = { text };
+      let fetchInit: RequestInit;
 
       if (mode === "tts") {
         endpoint = "/voice/tts";
-        body = { text, voice };
+        fetchInit = {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ text, voice }),
+        };
       } else if (mode === "design") {
         endpoint = "/voice/design";
-        body = { text, description };
+        fetchInit = {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ text, description }),
+        };
       } else {
         endpoint = "/voice/clone";
-        body = { text, refAudio: refAudioB64 };
+        const form = new FormData();
+        form.append("text", text);
+        form.append("refAudio", refAudioFile!);
+        fetchInit = {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: form,
+        };
       }
 
-      const res = await fetch(`${API_BASE}${endpoint}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      const res = await fetch(`${API_BASE}${endpoint}`, fetchInit);
 
       if (!res.ok) {
         const err = await res.text();
@@ -179,7 +185,7 @@ export function VoicePanel({ getToken }: VoicePanelProps) {
 
       <button
         onClick={generate}
-        disabled={loading || !text.trim() || (mode === "design" && !description.trim()) || (mode === "clone" && !refAudioB64)}
+        disabled={loading || !text.trim() || (mode === "design" && !description.trim()) || (mode === "clone" && !refAudioFile)}
         className="btn-primary px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50"
       >
         {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
