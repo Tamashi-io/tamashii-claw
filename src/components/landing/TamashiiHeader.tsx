@@ -45,7 +45,7 @@ export function TamashiiHeader() {
               </svg>
             </div>
             <span className="text-xl font-bold">
-              <span className="text-foreground">Comput3</span>
+              <span className="text-foreground">Tamashii</span>
               <span className="text-primary">Claw</span>
             </span>
           </a>
