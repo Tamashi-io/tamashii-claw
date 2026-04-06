@@ -54,13 +54,13 @@ export function VoicePanel({ getToken }: VoicePanelProps) {
       let body: Record<string, unknown> = { text };
 
       if (mode === "tts") {
-        endpoint = "/api/voice/tts";
+        endpoint = "/voice/tts";
         body = { text, voice };
       } else if (mode === "design") {
-        endpoint = "/api/voice/design";
+        endpoint = "/voice/design";
         body = { text, description };
       } else {
-        endpoint = "/api/voice/clone";
+        endpoint = "/voice/clone";
         body = { text, refAudio: refAudioB64 };
       }
 
