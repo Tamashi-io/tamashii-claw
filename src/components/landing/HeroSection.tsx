@@ -7,7 +7,7 @@ const highlights = [
   { icon: Bot, label: "Autonomous Agents", detail: "24/7 uptime" },
   { icon: Cpu, label: "B200 GPUs", detail: "Frontier models" },
   { icon: Zap, label: "Instant Deploy", detail: "One click" },
-  { icon: Shield, label: "Solana Payments", detail: "SOL or USDC" },
+  { icon: Shield, label: "BNB & Base Payments", detail: "BNB or USDC" },
 ];
 
 export function HeroSection() {
@@ -29,7 +29,7 @@ export function HeroSection() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.15 }}
           >
-            Persistent, autonomous AI agents on decentralized B200 GPUs. Flat-rate inference, OpenAI-compatible API, pay with SOL or USDC.
+            Persistent, autonomous AI agents on decentralized B200 GPUs. Flat-rate inference, OpenAI-compatible API, pay with BNB or USDC.
           </motion.p>
 
           <motion.div

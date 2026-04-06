@@ -26,11 +26,11 @@ const features = [
   },
   {
     icon: Wallet,
-    title: "Solana Payments",
-    description: "Pay with SOL or USDC on Solana. Automatically swapped and bridged via LI.FI. No credit card required.",
+    title: "BNB & Base Payments",
+    description: "Pay with BNB or USDC on Base. Automatically swapped and bridged via LI.FI. No credit card required.",
     bullets: [
-      "Pay in SOL or USDC-SPL",
-      "Auto-bridged to Base via LI.FI",
+      "Pay in BNB or USDC",
+      "Settled on Base via LI.FI",
       "No credit card or KYC required",
     ],
   },

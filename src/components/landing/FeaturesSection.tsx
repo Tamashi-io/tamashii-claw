@@ -25,9 +25,9 @@ const specs = [
   },
   {
     icon: Globe,
-    title: "Solana Payments",
-    value: "SOL / USDC",
-    description: "Pay with SOL or USDC on Solana. Auto-bridged via LI.FI. No credit card, no KYC.",
+    title: "BNB & Base Payments",
+    value: "BNB / USDC",
+    description: "Pay with BNB or USDC on Base. Auto-bridged via LI.FI. No credit card, no KYC.",
   },
 ];
 
