@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import {
   Send, ArrowLeft, Loader2, MessageSquare, FolderOpen, HardDrive,
-  Settings, TerminalSquare, ScrollText, Zap, MessageCircle, Cpu,
+  Settings, TerminalSquare, ScrollText, Zap, MessageCircle, Cpu, Mic, Key, Copy, Check,
 } from "lucide-react";
 import { useTamashiiAuth } from "@/hooks/useTamashiiAuth";
 import { apiFetch } from "@/lib/api";
@@ -18,6 +18,7 @@ import { ExecPanel } from "@/components/console/ExecPanel";
 import { LogsPanel } from "@/components/console/LogsPanel";
 import { ChannelsPanel } from "@/components/console/ChannelsPanel";
 import { ModelsPanel } from "@/components/console/ModelsPanel";
+import { VoicePanel } from "@/components/console/VoicePanel";
 
 interface Agent {
   id: string;
@@ -28,7 +29,7 @@ interface Agent {
   gatewayToken?: string | null;
 }
 
-type Tab = "chat" | "terminal" | "exec" | "logs" | "workspace" | "files" | "models" | "channels" | "config";
+type Tab = "chat" | "terminal" | "exec" | "logs" | "workspace" | "files" | "models" | "channels" | "config" | "voice" | "apikey";
 
 const TABS: { key: Tab; label: string; icon: typeof MessageSquare }[] = [
   { key: "chat", label: "Chat", icon: MessageSquare },
@@ -39,6 +40,8 @@ const TABS: { key: Tab; label: string; icon: typeof MessageSquare }[] = [
   { key: "files", label: "Files", icon: HardDrive },
   { key: "models", label: "Models", icon: Cpu },
   { key: "channels", label: "Channels", icon: MessageCircle },
+  { key: "voice", label: "Voice", icon: Mic },
+  { key: "apikey", label: "API Key", icon: Key },
   { key: "config", label: "Config", icon: Settings },
 ];
 
@@ -49,6 +52,10 @@ export default function AgentConsolePage() {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [tab, setTab] = useState<Tab>("chat");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [scopedKey, setScopedKey] = useState<string | null>(null);
+  const [scopedKeyLoading, setScopedKeyLoading] = useState(false);
+  const [scopedKeyError, setScopedKeyError] = useState<string | null>(null);
+  const [scopedKeyCopied, setScopedKeyCopied] = useState(false);
 
   // Poll agent state until RUNNING so the WebSocket can connect
   useEffect(() => {
@@ -281,6 +288,65 @@ export default function AgentConsolePage() {
             connected={connected}
             saveConfig={saveConfig}
           />
+        </div>
+      )}
+
+      {tab === "voice" && (
+        <div className="flex-1 overflow-auto glass-card p-6">
+          <VoicePanel agentId={agentId} getToken={getToken} />
+        </div>
+      )}
+
+      {tab === "apikey" && (
+        <div className="flex-1 overflow-auto glass-card p-6 max-w-lg">
+          <h2 className="text-base font-semibold text-foreground mb-1">Agent Scoped API Key</h2>
+          <p className="text-sm text-text-muted mb-5">
+            Generate a key scoped to this agent only. The key is shown once — copy it immediately.
+          </p>
+          {scopedKey ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <input
+                  readOnly
+                  value={scopedKey}
+                  className="flex-1 px-3 py-2 rounded-lg bg-surface-low border border-border text-foreground text-xs font-mono focus:outline-none"
+                />
+                <button
+                  onClick={() => { navigator.clipboard.writeText(scopedKey); setScopedKeyCopied(true); setTimeout(() => setScopedKeyCopied(false), 2000); }}
+                  className="p-2 rounded-lg border border-border hover:bg-surface-secondary transition-colors"
+                >
+                  {scopedKeyCopied ? <Check className="w-4 h-4 text-[#38D39F]" /> : <Copy className="w-4 h-4 text-text-muted" />}
+                </button>
+              </div>
+              <p className="text-xs text-warning">This key will not be shown again. Store it securely.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {scopedKeyError && (
+                <p className="text-sm text-destructive">{scopedKeyError}</p>
+              )}
+              <button
+                onClick={async () => {
+                  setScopedKeyLoading(true);
+                  setScopedKeyError(null);
+                  try {
+                    const token = await getToken();
+                    const resp = await apiFetch<{ key?: string; api_key?: string }>(`/agents/${agentId}/scoped-key`, token, { method: "POST", body: JSON.stringify({}) });
+                    setScopedKey(resp.key ?? resp.api_key ?? JSON.stringify(resp));
+                  } catch (err) {
+                    setScopedKeyError(err instanceof Error ? err.message : "Failed to generate key");
+                  } finally {
+                    setScopedKeyLoading(false);
+                  }
+                }}
+                disabled={scopedKeyLoading}
+                className="btn-primary px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+              >
+                {scopedKeyLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Key className="w-4 h-4" />}
+                Generate Scoped Key
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

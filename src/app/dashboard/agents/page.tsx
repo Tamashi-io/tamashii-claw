@@ -36,6 +36,7 @@ interface Agent {
   cpu?: number;
   memory_mib?: number;
   memory?: number;
+  tags?: string[];
 }
 
 interface SizePreset {
@@ -93,9 +94,12 @@ export default function AgentsPage() {
   const [upgradeReason, setUpgradeReason] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [stoppingId, setStoppingId] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [preset, setPreset] = useState(0); // default Small
   const [agentType, setAgentType] = useState("openclaw");
+  const [tagInput, setTagInput] = useState("");
 
   // Whether the current plan is a paid plan (not "free")
   const [hasPaidPlan, setHasPaidPlan] = useState(false);
@@ -219,6 +223,7 @@ export default function AgentsPage() {
     try {
       const token = await getToken();
       const { cpu, memory } = sizePresets[preset];
+      const tags = tagInput.split(",").map((t) => t.trim()).filter(Boolean);
       await apiFetch("/agents", token, {
         method: "POST",
         body: JSON.stringify({
@@ -227,12 +232,14 @@ export default function AgentsPage() {
           memory_mib: memory,
           start: true,
           agentType,
+          ...(tags.length > 0 ? { tags } : {}),
         }),
       });
       setShowCreate(false);
       setNewName("");
       setPreset(0);
       setAgentType("openclaw");
+      setTagInput("");
       setCreateError(null);
       await loadAgents();
     } catch (err) {
@@ -264,12 +271,18 @@ export default function AgentsPage() {
   };
 
   const stopAgent = async (id: string) => {
+    setStoppingId(id);
+    setActionError(null);
     try {
       const token = await getToken();
       await apiFetch(`/agents/${id}/stop`, token, { method: "POST" });
       await loadAgents();
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to stop agent";
       console.error("Failed to stop agent:", err);
+      setActionError(message);
+    } finally {
+      setStoppingId(null);
     }
   };
 
@@ -281,7 +294,10 @@ export default function AgentsPage() {
       setDeleteTarget(null);
       await loadAgents();
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to delete agent";
       console.error("Failed to delete agent:", err);
+      setDeleteTarget(null);
+      setActionError(message);
     }
   };
 
@@ -348,6 +364,16 @@ export default function AgentsPage() {
           New Agent
         </button>
       </div>
+
+      {/* Action error banner */}
+      {actionError && (
+        <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive flex items-center justify-between">
+          <span>{actionError}</span>
+          <button onClick={() => setActionError(null)} className="ml-3 hover:opacity-70">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Create Agent Modal */}
       {showCreate && (
@@ -442,6 +468,17 @@ export default function AgentsPage() {
               </div>
             </div>
 
+              <div>
+                <label className="block text-sm text-text-secondary mb-1.5">Tags <span className="text-text-muted">(optional, comma-separated)</span></label>
+                <input
+                  type="text"
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  placeholder="prod, trading, main"
+                  className="w-full px-3 py-2 rounded-lg bg-surface-low border border-border text-foreground text-sm placeholder:text-text-muted focus:outline-none focus:border-primary"
+                />
+              </div>
+
             {createError && (
               <div className="mt-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">
                 {createError}
@@ -517,9 +554,18 @@ export default function AgentsPage() {
                 </div>
 
                 {(agent.cpu_millicores || agent.cpu || agent.memory_mib || agent.memory) && (
-                  <p className="text-xs text-text-muted mb-3">
+                  <p className="text-xs text-text-muted mb-2">
                     {agent.cpu ?? agent.cpu_millicores} CPU &middot; {agent.memory ?? agent.memory_mib} GB memory
                   </p>
+                )}
+                {agent.tags && agent.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-3">
+                    {agent.tags.map((tag) => (
+                      <span key={tag} className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary border border-primary/20">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
                 )}
 
                 <div className="flex items-center gap-2">
@@ -552,10 +598,15 @@ export default function AgentsPage() {
                   ) : isRunning ? (
                     <button
                       onClick={() => stopAgent(agent.id)}
-                      className="flex-1 btn-secondary px-3 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1"
+                      disabled={stoppingId === agent.id}
+                      className="flex-1 btn-secondary px-3 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1 disabled:opacity-50"
                     >
-                      <Square className="w-3 h-3" />
-                      Stop
+                      {stoppingId === agent.id ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Square className="w-3 h-3" />
+                      )}
+                      {stoppingId === agent.id ? "Stopping..." : "Stop"}
                     </button>
                   ) : (
                     <button

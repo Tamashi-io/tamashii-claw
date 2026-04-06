@@ -3,7 +3,7 @@ export interface RequestOptions {
     url: string;
     headers?: Record<string, string>;
     body?: any;
-    params?: Record<string, string>;
+    params?: Record<string, string | number | Array<string | number>>;
     retries?: number;
     backoff?: number;
     timeout?: number;
@@ -21,8 +21,9 @@ export declare class HTTPClient {
     private timeout;
     constructor(baseUrl: string, apiKey: string, timeout?: number);
     private get headers();
-    get<T = any>(path: string, params?: Record<string, string>): Promise<T>;
+    get<T = any>(path: string, params?: Record<string, string | number | Array<string | number>>): Promise<T>;
     post<T = any>(path: string, body?: any): Promise<T>;
+    postBytes(path: string, body?: any): Promise<Uint8Array>;
     patch<T = any>(path: string, body?: any): Promise<T>;
     delete<T = any>(path: string): Promise<T>;
     /**

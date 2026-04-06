@@ -4,13 +4,17 @@ import { UserAPI } from './user.js';
 import { Instances } from './instances.js';
 import { Renders } from './renders.js';
 import { Files } from './files.js';
-import { Claw } from './claw.js';
+import { VoiceAPI } from './voice.js';
+import { HyperAgent } from './agent.js';
 import { KeysAPI } from './keys.js';
+import { Deployments } from './agents.js';
 export interface HyperCLIOptions {
     apiKey?: string;
     apiUrl?: string;
-    clawApiKey?: string;
-    clawDev?: boolean;
+    agentApiKey?: string;
+    agentDev?: boolean;
+    agentsApiBaseUrl?: string;
+    agentsWsUrl?: string;
     timeout?: number;
 }
 /**
@@ -20,7 +24,7 @@ export interface HyperCLIOptions {
  * ```typescript
  * import { HyperCLI } from '@hypercli/sdk';
  *
- * const client = new HyperCLI(); // Uses HYPERCLI_API_KEY from env or ~/.hypercli/config
+ * const client = new HyperCLI(); // Uses HYPER_API_KEY from env or ~/.hypercli/config
  * // or
  * const client = new HyperCLI({ apiKey: 'your_key' });
  *
@@ -50,8 +54,10 @@ export declare class HyperCLI {
     readonly instances: Instances;
     readonly renders: Renders;
     readonly files: Files;
+    readonly voice: VoiceAPI;
     readonly keys: KeysAPI;
-    readonly claw: Claw;
+    readonly agent: HyperAgent;
+    readonly deployments: Deployments;
     constructor(options?: HyperCLIOptions);
     get apiUrl(): string;
     get apiKey(): string;

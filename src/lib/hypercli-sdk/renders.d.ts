@@ -7,6 +7,7 @@ export interface Render {
     state: string;
     template: string | null;
     renderType: string | null;
+    tags: string[] | null;
     resultUrl: string | null;
     error: string | null;
     createdAt: number | null;
@@ -20,7 +21,14 @@ export interface RenderStatus {
 }
 export declare class Renders {
     private http;
-    constructor(http: HTTPClient);
+    private authHttp;
+    private authMeCache;
+    constructor(http: HTTPClient, authHttp?: HTTPClient);
+    private authMe;
+    private supportsSubscriptionFamily;
+    private postFlow;
+    private getRender;
+    private deleteRender;
     /**
      * List all renders
      */
@@ -28,6 +36,7 @@ export declare class Renders {
         state?: string;
         template?: string;
         type?: string;
+        tags?: string[];
     }): Promise<Render[]>;
     /**
      * Get render details
@@ -36,7 +45,7 @@ export declare class Renders {
     /**
      * Create a new render
      */
-    create(params: Record<string, any>, renderType?: string, notifyUrl?: string): Promise<Render>;
+    create(params: Record<string, any>, renderType?: string, notifyUrl?: string, tags?: string[]): Promise<Render>;
     /**
      * Cancel a render
      */
@@ -45,7 +54,7 @@ export declare class Renders {
      * Get render status (lightweight polling endpoint)
      */
     status(renderId: string): Promise<RenderStatus>;
-    private flow;
+    flow(flowType: string, params: Record<string, any>): Promise<Render>;
     /**
      * Generate an image using Qwen-Image
      */

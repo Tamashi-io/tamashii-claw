@@ -3,6 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GatewayClient } from "@/gateway-client";
 import { apiFetch, API_BASE } from "@/lib/api";
+import {
+  normalizeGatewayChatMessage,
+  extractGatewayChatToolCalls,
+  extractGatewayChatThinking,
+} from "@/lib/hypercli-sdk/gateway";
 
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -53,56 +58,25 @@ function storeGatewayToken(agentId: string, token: string): void {
 }
 
 function normalizeHistoryMessage(message: unknown): ChatMessage | null {
-  if (!message || typeof message !== "object") return null;
-  const entry = message as Record<string, unknown>;
-  const rawRole = typeof entry.role === "string" ? entry.role.toLowerCase() : "";
+  const normalized = normalizeGatewayChatMessage(message);
+  if (!normalized || !normalized.text.trim()) return null;
   const role: ChatMessage["role"] =
-    rawRole === "user" || rawRole === "assistant" || rawRole === "system"
-      ? rawRole
+    normalized.role === "user" || normalized.role === "assistant" || normalized.role === "system"
+      ? (normalized.role as ChatMessage["role"])
       : "assistant";
-  const timestamp = typeof entry.timestamp === "number" ? entry.timestamp : Date.now();
-
-  const extractContent = (): string => {
-    if (typeof entry.text === "string") return maybeDecodeMojibake(entry.text);
-    if (typeof entry.content === "string") return maybeDecodeMojibake(entry.content);
-    if (!Array.isArray(entry.content)) return "";
-    const parts = entry.content
-      .map((item) => {
-        if (!item || typeof item !== "object") return "";
-        const part = item as Record<string, unknown>;
-        if (part.type !== "text") return "";
-        return typeof part.text === "string" ? part.text : "";
-      })
-      .filter(Boolean)
-      .join("");
-    return maybeDecodeMojibake(parts);
-  };
-
-  const content = extractContent();
-  if (!content.trim()) return null;
-
-  let thinking: string | undefined;
-  if (Array.isArray(entry.content)) {
-    const thinkingParts = entry.content
-      .map((item) => {
-        if (!item || typeof item !== "object") return "";
-        const part = item as Record<string, unknown>;
-        if (part.type !== "thinking") return "";
-        return typeof part.thinking === "string" ? part.thinking : "";
-      })
-      .filter(Boolean)
-      .join("\n")
-      .trim();
-    if (thinkingParts) {
-      thinking = maybeDecodeMojibake(thinkingParts);
-    }
-  }
-
+  const toolCalls = normalized.toolCalls.length > 0
+    ? normalized.toolCalls.map((tc) => ({
+        name: tc.name,
+        args: typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args ?? {}),
+        result: tc.result,
+      }))
+    : undefined;
   return {
     role,
-    content,
-    ...(thinking ? { thinking } : {}),
-    timestamp,
+    content: maybeDecodeMojibake(normalized.text),
+    ...(normalized.thinking ? { thinking: maybeDecodeMojibake(normalized.thinking) } : {}),
+    ...(toolCalls ? { toolCalls } : {}),
+    timestamp: normalized.timestamp ?? Date.now(),
   };
 }
 
@@ -490,30 +464,35 @@ else:
             ];
           });
         } else if (event === "chat.thinking") {
+          const thinkingText = extractGatewayChatThinking(payload) || (payload.text as string) || "";
           setMessages((prev) => {
             const last = prev[prev.length - 1];
             if (last?.role === "assistant") {
               return [
                 ...prev.slice(0, -1),
-                { ...last, thinking: (last.thinking ?? "") + ((payload.text as string) ?? "") },
+                { ...last, thinking: (last.thinking ?? "") + thinkingText },
               ];
             }
             return [
               ...prev,
-              { role: "assistant", content: "", thinking: (payload.text as string) ?? "", timestamp: Date.now() },
+              { role: "assistant", content: "", thinking: thinkingText, timestamp: Date.now() },
             ];
           });
         } else if (event === "chat.tool_call") {
           setMessages((prev) => {
             const last = prev[prev.length - 1];
             if (last?.role === "assistant") {
-              const tc = {
-                name: (payload as Record<string, unknown>).name as string ?? "?",
-                args: JSON.stringify(payload),
-              };
+              const extracted = extractGatewayChatToolCalls(payload);
+              const newCalls = extracted.length > 0
+                ? extracted.map((tc) => ({
+                    name: tc.name,
+                    args: typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args ?? {}),
+                    result: tc.result,
+                  }))
+                : [{ name: (payload as Record<string, unknown>).name as string ?? "?", args: JSON.stringify(payload) }];
               return [
                 ...prev.slice(0, -1),
-                { ...last, toolCalls: [...(last.toolCalls ?? []), tc] },
+                { ...last, toolCalls: [...(last.toolCalls ?? []), ...newCalls] },
               ];
             }
             return prev;

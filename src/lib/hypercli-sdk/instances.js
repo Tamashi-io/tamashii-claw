@@ -5,6 +5,7 @@ function gpuConfigFromDict(data) {
         memoryGb: data.memory_gb || 0,
         storageGb: data.storage_gb || 0,
         regions: data.regions || [],
+        constraints: data.constraints || null,
     };
 }
 function gpuTypeFromDict(id, data) {

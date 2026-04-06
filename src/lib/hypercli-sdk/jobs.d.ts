@@ -2,6 +2,7 @@
  * Jobs API - GPU job management
  */
 import type { HTTPClient } from './http.js';
+import WebSocket from 'ws';
 export interface Job {
     jobId: string;
     jobKey: string;
@@ -9,15 +10,26 @@ export interface Job {
     gpuType: string;
     gpuCount: number;
     region: string;
+    constraints: Record<string, string> | null;
     interruptible: boolean;
     pricePerHour: number;
     pricePerSecond: number;
     dockerImage: string;
     runtime: number;
+    elapsed: number;
+    timeLeft: number;
     hostname: string | null;
+    coldBoot: boolean;
     createdAt: number | null;
     startedAt: number | null;
     completedAt: number | null;
+    tags?: string[] | null;
+}
+export interface ExecResult {
+    jobId: string;
+    stdout: string;
+    stderr: string;
+    exitCode: number;
 }
 export interface GPUMetrics {
     index: number;
@@ -45,6 +57,7 @@ export interface CreateJobOptions {
     gpuType?: string;
     gpuCount?: number;
     region?: string;
+    constraints?: Record<string, string>;
     runtime?: number;
     interruptible?: boolean;
     env?: Record<string, string>;
@@ -54,14 +67,32 @@ export interface CreateJobOptions {
         username: string;
         password: string;
     };
+    tags?: Record<string, string> | string[];
+    dockerfile?: string;
+    dryRun?: boolean;
+}
+export interface ListJobsOptions {
+    state?: string;
+    tags?: Record<string, string> | string[];
+    page?: number;
+    pageSize?: number;
+}
+export interface JobListPage {
+    jobs: Job[];
+    totalCount: number;
+    page: number;
+    pageSize: number;
 }
 export declare class Jobs {
     private http;
     constructor(http: HTTPClient);
+    private buildListParams;
     /**
      * List all jobs
      */
-    list(state?: string): Promise<Job[]>;
+    list(state?: string, tags?: Record<string, string> | string[]): Promise<Job[]>;
+    list(options?: ListJobsOptions): Promise<Job[]>;
+    listPage(options?: ListJobsOptions): Promise<JobListPage>;
     /**
      * Get job details
      */
@@ -90,6 +121,14 @@ export declare class Jobs {
      * Get job auth token
      */
     token(jobId: string): Promise<string>;
+    /**
+     * Execute a command non-interactively on a running job container.
+     */
+    exec(jobId: string, command: string, timeout?: number): Promise<ExecResult>;
+    /**
+     * Connect to a job shell via director WebSocket proxy.
+     */
+    shellConnect(jobId: string, shell?: string): Promise<WebSocket>;
 }
 /**
  * Check if string looks like a UUID (job ID)

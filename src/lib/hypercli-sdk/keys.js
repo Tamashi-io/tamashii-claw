@@ -1,7 +1,19 @@
+export const API_KEY_BASELINE_FAMILIES = [
+    { key: 'api', label: 'API Keys', allowed: ['none', 'self', '*'] },
+    { key: 'user', label: 'Profile', allowed: ['none', 'self', '*'] },
+    { key: 'jobs', label: 'Jobs', allowed: ['none', 'self', '*'] },
+    { key: 'renders', label: 'Renders', allowed: ['none', 'self', '*'] },
+    { key: 'files', label: 'Files', allowed: ['none', 'self', '*'] },
+    { key: 'agents', label: 'Agents', allowed: ['none', 'self', '*'] },
+    { key: 'models', label: 'Models', allowed: ['none', '*'] },
+    { key: 'voice', label: 'Voice', allowed: ['none', '*'] },
+    { key: 'flow', label: 'Flows', allowed: ['none', '*'] },
+];
 function apiKeyFromDict(data) {
     return {
         keyId: data.key_id || '',
         name: data.name || '',
+        tags: Array.isArray(data.tags) ? data.tags : [],
         apiKey: data.api_key || null,
         apiKeyPreview: data.api_key_preview || null,
         last4: data.last4 || null,
@@ -18,8 +30,12 @@ export class KeysAPI {
     /**
      * Create a new API key
      */
-    async create(name = 'default') {
-        const data = await this.http.post('/api/keys', { name });
+    async create(name = 'default', tags) {
+        const payload = { name };
+        if (tags !== undefined) {
+            payload.tags = tags;
+        }
+        const data = await this.http.post('/api/keys', payload);
         return apiKeyFromDict(data);
     }
     /**

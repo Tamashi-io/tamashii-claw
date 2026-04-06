@@ -8,6 +8,7 @@ export interface GPUConfig {
     memoryGb: number;
     storageGb: number;
     regions: string[];
+    constraints: Record<string, string> | null;
 }
 export interface GPUType {
     id: string;

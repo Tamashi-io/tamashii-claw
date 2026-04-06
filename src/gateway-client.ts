@@ -582,6 +582,10 @@ export class GatewayClient {
     return r.sessions ?? [];
   }
 
+  async sessionsPatch(patch: Record<string, unknown> & { key: string }): Promise<Record<string, unknown>> {
+    return this.call<Record<string, unknown>>("sessions.patch", patch);
+  }
+
   async chatHistory(sessionKey?: string, limit = 50): Promise<any[]> {
     const params: Record<string, unknown> = { limit };
     if (sessionKey) params.sessionKey = sessionKey;
@@ -616,6 +620,10 @@ export class GatewayClient {
 
   async cronRemove(jobId: string): Promise<void> {
     await this.call("cron.remove", { jobId });
+  }
+
+  async cronRun(jobId: string): Promise<any> {
+    return this.call("cron.run", { jobId });
   }
 
   async execApprove(execId: string): Promise<void> {

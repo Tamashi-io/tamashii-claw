@@ -13,6 +13,14 @@ export async function requestWithRetry(options) {
         const searchParams = new URLSearchParams();
         for (const [key, value] of Object.entries(params)) {
             if (value !== undefined && value !== null) {
+                if (Array.isArray(value)) {
+                    for (const item of value) {
+                        if (item !== undefined && item !== null) {
+                            searchParams.append(key, String(item));
+                        }
+                    }
+                    continue;
+                }
                 searchParams.append(key, String(value));
             }
         }
@@ -72,6 +80,20 @@ async function handleResponse(response) {
     }
     return (await response.json());
 }
+async function handleBytesResponse(response) {
+    if (response.status >= 400) {
+        let detail;
+        try {
+            const json = await response.json();
+            detail = json.detail || response.statusText;
+        }
+        catch {
+            detail = response.statusText || await response.text();
+        }
+        throw new APIError(response.status, detail);
+    }
+    return new Uint8Array(await response.arrayBuffer());
+}
 /**
  * HTTP Client for making authenticated requests to the API
  */
@@ -109,6 +131,16 @@ export class HTTPClient {
             timeout: this.timeout,
         });
         return handleResponse(response);
+    }
+    async postBytes(path, body) {
+        const response = await requestWithRetry({
+            method: 'POST',
+            url: `${this.baseUrl}${path}`,
+            headers: this.headers,
+            body,
+            timeout: this.timeout,
+        });
+        return handleBytesResponse(response);
     }
     async patch(path, body) {
         const response = await requestWithRetry({

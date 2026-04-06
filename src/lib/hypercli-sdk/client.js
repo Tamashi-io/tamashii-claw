@@ -2,15 +2,23 @@
  * Main HyperCLI client
  */
 import { HTTPClient } from './http.js';
-import { getApiKey, getApiUrl } from './config.js';
+import { getAgentApiKey, getAgentsApiBaseUrl, getAgentsApiBaseUrlFromProductBase, getAgentsWsUrl, getAgentsWsUrlFromProductBase, getApiKey, getApiUrl, } from './config.js';
 import { Billing } from './billing.js';
 import { Jobs } from './jobs.js';
 import { UserAPI } from './user.js';
 import { Instances } from './instances.js';
 import { Renders } from './renders.js';
 import { Files } from './files.js';
-import { Claw } from './claw.js';
+import { VoiceAPI } from './voice.js';
+import { HyperAgent } from './agent.js';
 import { KeysAPI } from './keys.js';
+import { Deployments } from './agents.js';
+function deriveAgentsApiBase(apiUrl, agentDev) {
+    return agentDev ? getAgentsApiBaseUrl(true) : getAgentsApiBaseUrlFromProductBase(apiUrl);
+}
+function deriveAgentsWsUrl(apiUrl, agentDev) {
+    return agentDev ? getAgentsWsUrl(true) : getAgentsWsUrlFromProductBase(apiUrl);
+}
 /**
  * HyperCLI API Client
  *
@@ -18,7 +26,7 @@ import { KeysAPI } from './keys.js';
  * ```typescript
  * import { HyperCLI } from '@hypercli/sdk';
  *
- * const client = new HyperCLI(); // Uses HYPERCLI_API_KEY from env or ~/.hypercli/config
+ * const client = new HyperCLI(); // Uses HYPER_API_KEY from env or ~/.hypercli/config
  * // or
  * const client = new HyperCLI({ apiKey: 'your_key' });
  *
@@ -48,17 +56,25 @@ export class HyperCLI {
     instances;
     renders;
     files;
+    voice;
     keys;
-    claw;
+    agent;
+    deployments;
     constructor(options = {}) {
         // Handle explicit undefined vs explicitly passed empty string
-        this._apiKey = options.apiKey !== undefined ? options.apiKey : (getApiKey() || '');
+        const productApiKey = options.apiKey !== undefined ? options.apiKey : (getApiKey() || '');
+        const resolvedAgentApiKey = options.agentApiKey !== undefined ? options.agentApiKey : (getAgentApiKey() || '');
+        this._apiKey = productApiKey || resolvedAgentApiKey;
         if (!this._apiKey) {
-            throw new Error('API key required. Set HYPERCLI_API_KEY env var, ' +
+            throw new Error('API key required. Set HYPER_API_KEY/HYPERCLI_API_KEY or HYPER_AGENTS_API_KEY, ' +
                 'create ~/.hypercli/config, or pass apiKey parameter.');
         }
         this._apiUrl = options.apiUrl || getApiUrl();
         this._http = new HTTPClient(this._apiUrl, this._apiKey, options.timeout);
+        const resolvedAgentsApiBase = options.agentsApiBaseUrl ||
+            (options.apiUrl ? deriveAgentsApiBase(this._apiUrl, Boolean(options.agentDev)) : getAgentsApiBaseUrl(Boolean(options.agentDev)));
+        const resolvedAgentsWsUrl = options.agentsWsUrl ||
+            (options.apiUrl ? deriveAgentsWsUrl(this._apiUrl, Boolean(options.agentDev)) : getAgentsWsUrl(Boolean(options.agentDev)));
         // API namespaces
         this.billing = new Billing(this._http);
         this.jobs = new Jobs(this._http);
@@ -66,8 +82,10 @@ export class HyperCLI {
         this.instances = new Instances(this._http);
         this.renders = new Renders(this._http);
         this.files = new Files(this._http);
+        this.voice = new VoiceAPI(this._http);
         this.keys = new KeysAPI(this._http);
-        this.claw = new Claw(this._http, options.clawApiKey, options.clawDev);
+        this.agent = new HyperAgent(this._http, resolvedAgentApiKey, options.agentDev, resolvedAgentsApiBase);
+        this.deployments = new Deployments(this._http, resolvedAgentApiKey, resolvedAgentsApiBase, resolvedAgentsWsUrl);
     }
     get apiUrl() {
         return this._apiUrl;
