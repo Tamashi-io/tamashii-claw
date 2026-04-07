@@ -375,7 +375,7 @@ export function useGatewayChat(
             } catch (fixErr) {
               console.warn("[gateway] Crash-loop recovery failed:", fixErr);
             }
-            continue; // skip normal retry delay — go straight to next attempt
+            attempt--; // recovery consumed this slot; don't count it as a retry
           }
 
           // Auto-fix: patch gateway config for token mismatch
