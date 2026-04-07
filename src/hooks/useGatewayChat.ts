@@ -213,15 +213,14 @@ export function useGatewayChat(
         // Strategy: use sed -i to remove "provider" lines from the config file (safe
         // for pretty-printed JSON where each key is on its own line), then pkill so
         // the supervisor restarts openclaw with the repaired config.
+        // Simple semicolon-separated one-liner — no for loops to avoid shell syntax issues
+        // when exec joins array elements with spaces (done pkill → invalid).
         const fixCmd = [
-          // Remove invalid "provider" key from all openclaw.json files we can find
-          `for _f in /root/.openclaw/openclaw.json /home/ubuntu/.openclaw/openclaw.json; do`,
-          `  [ -f "$_f" ] && sed -i '/"provider"/d' "$_f" 2>/dev/null;`,
-          `done`,
-          // Restart openclaw so the fixed config is loaded
+          `sed -i '/"provider"/d' /root/.openclaw/openclaw.json 2>/dev/null`,
+          `sed -i '/"provider"/d' /home/ubuntu/.openclaw/openclaw.json 2>/dev/null`,
           `pkill -f openclaw 2>/dev/null || true`,
           `echo x`,
-        ].join(" ");
+        ].join("; ");
         const fixResp = await apiFetch<{ exit_code?: number; stdout?: string; output?: string; stderr?: string }>(
           `/agents/${agent.id}/exec`, prefixToken,
           { method: "POST", body: JSON.stringify({ command: fixCmd, timeout: 10 }) }
