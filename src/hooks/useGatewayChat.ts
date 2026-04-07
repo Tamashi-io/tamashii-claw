@@ -177,17 +177,42 @@ export function useGatewayChat(
         // Fall back to proxy without JWT
       }
 
-      // Build gateway URL — use plain hostname (openclaw-{hostname} doesn't resolve)
+      // Build gateway URL.
+      // PRIMARY: use the backend WebSocket proxy at /ws/agents/:id/gateway.
+      // Browsers cannot set Authorization headers on WebSocket connections, so a
+      // direct wss://agent.hyperclaw.app/?token=JWT fails — HyperCLI's routing proxy
+      // requires the JWT in the Authorization: Bearer header. The backend proxy
+      // opens the upstream WebSocket server-side with the proper header.
+      //
+      // The proxy path is /ws/agents/:id/gateway (NestJS upgrade handler).
+      // We derive the WebSocket origin from API_BASE (full URL or relative /api).
       let gwUrl: string | null = null;
-      if (ocUrl) {
-        const base = ocUrl.startsWith("wss://") || ocUrl.startsWith("ws://") ? ocUrl : `wss://${ocUrl}`;
-        gwUrl = hyperclawJwt ? `${base}?token=${encodeURIComponent(hyperclawJwt)}` : base;
-      } else if (hostname) {
-        const base = `wss://${hostname}`;
-        gwUrl = hyperclawJwt ? `${base}?token=${encodeURIComponent(hyperclawJwt)}` : base;
+      const wsOrigin = (() => {
+        if (typeof window === "undefined") return "";
+        if (API_BASE.startsWith("http://") || API_BASE.startsWith("https://")) {
+          try {
+            const u = new URL(API_BASE);
+            return `${u.protocol === "https:" ? "wss:" : "ws:"}//${u.host}`;
+          } catch { /* fall through */ }
+        }
+        return `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}`;
+      })();
+      if (wsOrigin && (ocUrl || hostname)) {
+        gwUrl = `${wsOrigin}/ws/agents/${agent.id}/gateway?token=${encodeURIComponent(authToken)}`;
+      }
+
+      // FALLBACK: direct connection if backend proxy unavailable
+      if (!gwUrl) {
+        if (ocUrl) {
+          const base = ocUrl.startsWith("wss://") || ocUrl.startsWith("ws://") ? ocUrl : `wss://${ocUrl}`;
+          gwUrl = hyperclawJwt ? `${base}?token=${encodeURIComponent(hyperclawJwt)}` : base;
+        } else if (hostname) {
+          gwUrl = hyperclawJwt ? `wss://${hostname}?token=${encodeURIComponent(hyperclawJwt)}` : `wss://${hostname}`;
+        }
       }
 
       if (!gwUrl) return;
+      console.log("[gateway] URL:", gwUrl.split("?")[0]);
 
       // Retry with backoff — agent gateway takes ~60-90s to boot
       const MAX_RETRIES = 5;
@@ -213,14 +238,11 @@ export function useGatewayChat(
         // Strategy: use sed -i to remove "provider" lines from the config file (safe
         // for pretty-printed JSON where each key is on its own line), then pkill so
         // the supervisor restarts openclaw with the repaired config.
-        // Delete the config file entirely so openclaw starts clean from env vars.
-        // Using rm -f avoids all quoting/regex issues (single quotes in sed patterns
-        // break when HyperCLI wraps the command in sh -c '...'). rm -f returns 0
-        // whether or not the files exist. Env vars already set in launch_config:
-        //   OPENCLAW_GATEWAY_MODE=local
-        //   OPENCLAW_GATEWAY_TOKEN=tamashiiclaw-gateway-auth
-        //   OPENCLAW_CONTROL_UI_ALLOWED_ORIGIN=https://claw.tamashi.io
-        const fixCmd = "rm -f /root/.openclaw/openclaw.json /home/ubuntu/.openclaw/openclaw.json; pkill -f openclaw 2>/dev/null; true";
+        // Delete the broken config file so the crash loop recovers on next restart.
+        // Do NOT pkill — killing a healthy openclaw would cause unnecessary downtime.
+        // If openclaw is crash-looping due to the bad config, deleting the file lets
+        // the next natural restart succeed. rm -f returns 0 whether files exist or not.
+        const fixCmd = "rm -f /root/.openclaw/openclaw.json /home/ubuntu/.openclaw/openclaw.json";
         const fixResp = await apiFetch<{ exit_code?: number; stdout?: string; output?: string; stderr?: string }>(
           `/agents/${agent.id}/exec`, prefixToken,
           { method: "POST", body: JSON.stringify({ command: fixCmd, timeout: 10 }) }
@@ -232,9 +254,8 @@ export function useGatewayChat(
           stdout: fixOut || "(empty)",
           stderr: fixErr || "(empty)",
         });
-        // Always wait for openclaw to restart — exec is async so we can't confirm
-        console.log("[gateway] Waiting for openclaw restart...");
-        await new Promise((r) => setTimeout(r, 15_000));
+        // Small wait for async exec to complete (fire-and-forget, no stdout)
+        console.log("[gateway] Pre-flight sent, proceeding...");
       } catch (e) {
         console.warn("[gateway] Pre-flight config check failed:", e);
       }
