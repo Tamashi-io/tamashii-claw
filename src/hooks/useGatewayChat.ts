@@ -30,6 +30,7 @@ interface Agent {
   hostname: string | null;
   openclaw_url?: string | null;
   gatewayToken?: string | null;
+  started_at?: string | null;
 }
 
 // localStorage cache for gateway tokens (matches HyperClaw's agent-store pattern)
@@ -322,7 +323,14 @@ export function useGatewayChat(
           // HyperCLI's sync storage (works even when the pod is unhealthy), then
           // stop+start forces a fresh boot so OpenClaw reads the clean config.
           // Note: this clears plugin settings — only triggered on confirmed 503.
-          if (lastError.includes("503") && !configFixed && agent) {
+          //
+          // Guard: only trigger if the agent has been running >2 min. A 503 on a
+          // freshly-started pod just means OpenClaw is still booting (~60-90s) —
+          // triggering recovery in that case would stop+restart a healthy agent.
+          const agentAgeMs = agent.started_at
+            ? Date.now() - new Date(agent.started_at).getTime()
+            : Infinity;
+          if (lastError.includes("503") && !configFixed && agent && agentAgeMs > 120_000) {
             configFixed = true;
             console.log("[gateway] 503 detected — uploading clean config and restarting agent...");
             setError("Repairing agent configuration...");
@@ -369,8 +377,8 @@ export function useGatewayChat(
               if (!started) {
                 console.warn("[gateway] Could not start agent after 6 attempts");
               }
-              // Wait for pod to boot + OpenClaw to start listening (~45s)
-              await new Promise((r) => setTimeout(r, 45_000));
+              // Wait for pod to boot + OpenClaw to start listening (~75s)
+              await new Promise((r) => setTimeout(r, 75_000));
               setError("Reconnecting...");
             } catch (fixErr) {
               console.warn("[gateway] Crash-loop recovery failed:", fixErr);

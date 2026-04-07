@@ -27,6 +27,7 @@ interface Agent {
   hostname: string | null;
   openclaw_url?: string | null;
   gatewayToken?: string | null;
+  started_at?: string | null;
 }
 
 type Tab = "chat" | "terminal" | "exec" | "logs" | "workspace" | "files" | "models" | "channels" | "config" | "voice" | "apikey";
