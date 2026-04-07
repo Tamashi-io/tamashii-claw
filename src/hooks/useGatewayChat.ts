@@ -222,40 +222,44 @@ export function useGatewayChat(
       let lastError = "";
       let configFixAttempted = false;
 
-      // Pre-flight: delete bad openclaw.json via the HyperCLI file API.
-      // The exec endpoint runs in a sidecar and cannot touch the OpenClaw
-      // container filesystem, but the file API (DELETE /files/...) goes
-      // through HyperCLI's storage layer and reaches the actual container.
+      // Pre-flight: overwrite openclaw.json with a minimal valid config.
       //
-      // Strategy: delete the config file so the crash loop recovers on
-      // the next natural restart — OpenClaw will re-create it with defaults.
-      // We try both possible home directories in case the image uses /root
-      // or /home/ubuntu. 404s (file not found) are ignored.
+      // With sync_enabled=true, HyperCLI syncs the container filesystem to
+      // object storage. A bad config (e.g. telegram.provider invalid key) is
+      // persisted there and restored onto every new agent — including freshly
+      // created ones. DELETE consistently returns "Pod file delete failed"
+      // when the pod's file-manager sidecar is down (crash-loop).
+      //
+      // PUT /files/upload writes directly to the sync storage layer and works
+      // even when the pod is unhealthy. On the next OpenClaw restart the clean
+      // config is read instead of the bad one, breaking the crash loop.
       try {
         const prefixToken = await getToken();
+        // Minimal valid config — no plugins configured, so no invalid keys.
+        const cleanConfig = JSON.stringify({ plugins: { entries: {} } });
         const configPaths = [
           "/root/.openclaw/openclaw.json",
           "/home/ubuntu/.openclaw/openclaw.json",
         ];
-        const deleteResults = await Promise.allSettled(
+        const uploadResults = await Promise.allSettled(
           configPaths.map((p) =>
             apiFetch(
-              `/agents/${agent.id}/files/delete?path=${encodeURIComponent(p)}`,
+              `/agents/${agent.id}/files/upload?path=${encodeURIComponent(p)}`,
               prefixToken,
-              { method: "DELETE" }
+              { method: "PUT", body: cleanConfig }
             ).catch((e) => ({ _error: String(e) }))
           )
         );
         console.log(
-          "[gateway] Pre-flight file delete:",
-          deleteResults.map((r, i) => ({
+          "[gateway] Pre-flight config upload:",
+          uploadResults.map((r, i) => ({
             path: configPaths[i],
             status: r.status,
             value: r.status === "fulfilled" ? r.value : r.reason,
           }))
         );
       } catch (e) {
-        console.warn("[gateway] Pre-flight config delete failed:", e);
+        console.warn("[gateway] Pre-flight config upload failed:", e);
       }
 
       // Auto-update OpenClaw agent to latest version (fixes chat crash bug).
