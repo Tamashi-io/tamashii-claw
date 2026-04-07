@@ -347,13 +347,29 @@ export function useGatewayChat(
                 ok: r.status === "fulfilled",
               })));
 
-              // Stop then start the pod so it boots with the clean config.
+              // Stop the pod, then retry start until HyperCLI finishes cleanup.
+              // "still being cleaned up" means we called start too soon — retry
+              // with backoff. Only then wait for the full boot.
               await apiFetch(`/agents/${agent.id}/stop`, fixToken, { method: "POST" }).catch(() => {});
-              console.log("[gateway] Agent stopped, waiting for restart...");
+              console.log("[gateway] Agent stopped, waiting for cleanup...");
               setError("Restarting agent... (this takes ~45s)");
-              await new Promise((r) => setTimeout(r, 5_000)); // let stop settle
-              await apiFetch(`/agents/${agent.id}/start`, fixToken, { method: "POST" }).catch(() => {});
-              // Wait for pod to boot + OpenClaw to start listening
+
+              let started = false;
+              for (let s = 0; s < 6; s++) {
+                await new Promise((r) => setTimeout(r, 8_000)); // 8s between attempts
+                try {
+                  await apiFetch(`/agents/${agent.id}/start`, fixToken, { method: "POST" });
+                  console.log("[gateway] Agent started successfully");
+                  started = true;
+                  break;
+                } catch (startErr) {
+                  console.log(`[gateway] Start attempt ${s + 1}/6 failed:`, startErr instanceof Error ? startErr.message : startErr);
+                }
+              }
+              if (!started) {
+                console.warn("[gateway] Could not start agent after 6 attempts");
+              }
+              // Wait for pod to boot + OpenClaw to start listening (~45s)
               await new Promise((r) => setTimeout(r, 45_000));
               setError("Reconnecting...");
             } catch (fixErr) {
