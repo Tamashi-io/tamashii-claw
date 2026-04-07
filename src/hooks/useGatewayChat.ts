@@ -222,42 +222,40 @@ export function useGatewayChat(
       let lastError = "";
       let configFixAttempted = false;
 
-      // Pre-flight: ensure gateway config allows our frontend to connect
-      // (mode=local, allowed origins, auth token). Also fixes invalid plugin keys
-      // (e.g. telegram.provider) that crash openclaw on startup.
+      // Pre-flight: delete bad openclaw.json via the HyperCLI file API.
+      // The exec endpoint runs in a sidecar and cannot touch the OpenClaw
+      // container filesystem, but the file API (DELETE /files/...) goes
+      // through HyperCLI's storage layer and reaches the actual container.
+      //
+      // Strategy: delete the config file so the crash loop recovers on
+      // the next natural restart — OpenClaw will re-create it with defaults.
+      // We try both possible home directories in case the image uses /root
+      // or /home/ubuntu. 404s (file not found) are ignored.
       try {
         const prefixToken = await getToken();
-
-        // Pre-flight: fix invalid plugin keys (e.g. "provider" in telegram config) that
-        // crash openclaw on startup, then restart the process so the fix takes effect.
-        //
-        // NOTE: exec stdout is always empty (HyperCLI exec is fire-and-forget — the API
-        // returns 201 immediately and runs the command async). So we always assume the
-        // fix ran and always wait for the restart. Keep the command short and POSIX-only.
-        //
-        // Strategy: use sed -i to remove "provider" lines from the config file (safe
-        // for pretty-printed JSON where each key is on its own line), then pkill so
-        // the supervisor restarts openclaw with the repaired config.
-        // Delete the broken config file so the crash loop recovers on next restart.
-        // Do NOT pkill — killing a healthy openclaw would cause unnecessary downtime.
-        // If openclaw is crash-looping due to the bad config, deleting the file lets
-        // the next natural restart succeed. rm -f returns 0 whether files exist or not.
-        const fixCmd = "rm -f /root/.openclaw/openclaw.json /home/ubuntu/.openclaw/openclaw.json";
-        const fixResp = await apiFetch<{ exit_code?: number; stdout?: string; output?: string; stderr?: string }>(
-          `/agents/${agent.id}/exec`, prefixToken,
-          { method: "POST", body: JSON.stringify({ command: fixCmd, timeout: 10 }) }
+        const configPaths = [
+          "/root/.openclaw/openclaw.json",
+          "/home/ubuntu/.openclaw/openclaw.json",
+        ];
+        const deleteResults = await Promise.allSettled(
+          configPaths.map((p) =>
+            apiFetch(
+              `/agents/${agent.id}/files/delete?path=${encodeURIComponent(p)}`,
+              prefixToken,
+              { method: "DELETE" }
+            ).catch((e) => ({ _error: String(e) }))
+          )
         );
-        const fixOut = (fixResp.stdout ?? fixResp.output ?? "").trim();
-        const fixErr = (fixResp.stderr ?? "").trim();
-        console.log("[gateway] Pre-flight fix:", {
-          exit_code: fixResp.exit_code,
-          stdout: fixOut || "(empty)",
-          stderr: fixErr || "(empty)",
-        });
-        // Small wait for async exec to complete (fire-and-forget, no stdout)
-        console.log("[gateway] Pre-flight sent, proceeding...");
+        console.log(
+          "[gateway] Pre-flight file delete:",
+          deleteResults.map((r, i) => ({
+            path: configPaths[i],
+            status: r.status,
+            value: r.status === "fulfilled" ? r.value : r.reason,
+          }))
+        );
       } catch (e) {
-        console.warn("[gateway] Pre-flight config check failed:", e);
+        console.warn("[gateway] Pre-flight config delete failed:", e);
       }
 
       // Auto-update OpenClaw agent to latest version (fixes chat crash bug).
