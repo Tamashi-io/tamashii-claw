@@ -198,19 +198,23 @@ export function useGatewayChat(
       let configFixAttempted = false;
 
       // Pre-flight: ensure gateway config allows our frontend to connect
-      // (mode=local, allowed origins, auth token). Does NOT touch model/provider keys.
+      // (mode=local, allowed origins, auth token). Also fixes invalid plugin keys
+      // (e.g. telegram.provider) that crash openclaw on startup.
       try {
         const prefixToken = await getToken();
         const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
         const agentOrigin = hostname ? `https://${hostname}` : "";
 
         const preflightCmd = `python3 -c "
-import json,sys
+import json,sys,time
 p='/home/ubuntu/.openclaw/openclaw.json'
-try:
- c=json.load(open(p))
-except:
- sys.exit(0)
+c=None
+for _ in range(3):
+ try:
+  c=json.load(open(p)); break
+ except:
+  time.sleep(0.5)
+if c is None: sys.exit(0)
 changed=False
 gw=c.setdefault('gateway',{})
 if gw.get('mode')!='local':
@@ -230,6 +234,12 @@ ch=c.get('channels',{})
 for name in ch:
  if isinstance(ch[name],dict) and ch[name].get('enabled')==False:
   ch[name]['enabled']=True; changed=True
+if 'plugins' in c:
+ ents=c['plugins'].get('entries',{})
+ for pe in ents.values():
+  if isinstance(pe,dict):
+   for bad in ['provider']:
+    if bad in pe: pe.pop(bad); changed=True
 ui=gw.setdefault('controlUi',{})
 o=ui.get('allowedOrigins',[])
 for x in ['${browserOrigin}','${agentOrigin}','http://localhost:3000']:
@@ -243,29 +253,32 @@ if rt.get('token')!=gt:
  rt['token']=gt; changed=True
 if changed:
  ui['allowedOrigins']=o
-if changed:
  json.dump(c,open(p,'w'),indent=2)
  print('fixed')
 else:
  print('ok')
 "`;
-        const preResp = await apiFetch<{ stdout?: string; output?: string }>(
+        const preResp = await apiFetch<{ stdout?: string; output?: string; stderr?: string }>(
           `/agents/${agent.id}/exec`, prefixToken,
           { method: "POST", body: JSON.stringify({ command: preflightCmd }) }
         );
         const preResult = (preResp.stdout ?? preResp.output ?? "").trim();
-        if (preResult === "fixed") {
-          console.log("[gateway] Pre-flight config fix applied, running doctor --fix...");
+        const preStderr = (preResp.stderr ?? "").trim();
+        console.log("[gateway] Pre-flight config check:", preResult || "(empty)", preStderr ? `stderr: ${preStderr}` : "");
+        // Run doctor --fix whenever config was changed OR when pre-flight returned nothing
+        // (empty result means openclaw.json may be invalid/unreadable — doctor repairs it)
+        if (preResult === "fixed" || preResult === "") {
+          console.log("[gateway] Running openclaw doctor --fix...");
           try {
-            await apiFetch(`/agents/${agent.id}/exec`, prefixToken, {
+            const doctorResp = await apiFetch<{ stdout?: string; output?: string }>(
+              `/agents/${agent.id}/exec`, prefixToken, {
               method: "POST",
-              body: JSON.stringify({ command: "openclaw doctor --fix 2>&1 || true", timeout: 15 }),
+              body: JSON.stringify({ command: "openclaw doctor --fix 2>&1 || true", timeout: 20 }),
             });
+            console.log("[gateway] doctor --fix:", (doctorResp.stdout ?? doctorResp.output ?? "").trim());
           } catch {}
           console.log("[gateway] Waiting for gateway restart...");
-          await new Promise((r) => setTimeout(r, 10_000));
-        } else {
-          console.log("[gateway] Pre-flight config check:", preResult);
+          await new Promise((r) => setTimeout(r, 12_000));
         }
       } catch (e) {
         console.warn("[gateway] Pre-flight config check failed:", e);
