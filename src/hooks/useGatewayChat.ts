@@ -202,96 +202,40 @@ export function useGatewayChat(
       // (e.g. telegram.provider) that crash openclaw on startup.
       try {
         const prefixToken = await getToken();
-        const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
-        const agentOrigin = hostname ? `https://${hostname}` : "";
 
-        // Build pre-flight as a shell one-liner that:
-        // 1. Finds openclaw.json regardless of which user openclaw runs as
-        // 2. Removes invalid plugin keys (e.g. telegram.provider)
-        // 3. Fixes gateway config (mode, auth token, allowed origins)
-        // 4. Kills openclaw so the supervisor restarts it with the fixed config
-        const preflightCmd = `python3 - << 'PYEOF'
-import json,sys,os,subprocess,time
-# Find config — try common paths, then fall back to find(1)
-SEARCH=['/home/ubuntu/.openclaw/openclaw.json','/root/.openclaw/openclaw.json']
-p=next((x for x in SEARCH if os.path.isfile(x)),None)
-if not p:
- try:
-  r=subprocess.run(['find','/','-name','openclaw.json','-maxdepth','8'],capture_output=True,text=True,timeout=6)
-  p=next((l.strip() for l in r.stdout.splitlines() if 'openclaw.json' in l),None)
- except:pass
-if not p:print('notfound');sys.exit(0)
-print('conf:'+p)
-for _ in range(3):
- try:
-  c=json.load(open(p));break
- except:time.sleep(0.5)
-else:print('unreadable');sys.exit(0)
-changed=False
-if 'plugins' in c:
- for pe in c['plugins'].get('entries',{}).values():
-  if isinstance(pe,dict) and 'provider' in pe:
-   pe.pop('provider');changed=True
-gw=c.setdefault('gateway',{})
-if gw.get('mode')!='local':gw['mode']='local';changed=True
-for k in ['requireDeviceIdentity','autoApprovePairing']:
- if k in gw:gw.pop(k);changed=True
- if k in gw.get('auth',{}):gw['auth'].pop(k);changed=True
- if k in gw.get('controlUi',{}):gw['controlUi'].pop(k);changed=True
-a=gw.setdefault('auth',{})
-if 'requirePairing' in a:a.pop('requirePairing');changed=True
-if 'providers' in c:c.pop('providers');changed=True
-for name,ch in c.get('channels',{}).items():
- if isinstance(ch,dict) and ch.get('enabled')==False:ch['enabled']=True;changed=True
-ui=gw.setdefault('controlUi',{})
-o=ui.get('allowedOrigins',[])
-for x in ['${browserOrigin}','${agentOrigin}','http://localhost:3000']:
- if x and x not in o:o.append(x);changed=True
-auth=gw.setdefault('auth',{})
-gt='tamashiiclaw-gateway-auth'
-if auth.get('token')!=gt:auth['mode']='token';auth['token']=gt;changed=True
-rt=gw.setdefault('remote',{})
-if rt.get('token')!=gt:rt['token']=gt;changed=True
-if changed:
- ui['allowedOrigins']=o
- json.dump(c,open(p,'w'),indent=2)
- print('fixed')
-else:
- print('ok')
-PYEOF`;
-        const preResp = await apiFetch<{ stdout?: string; output?: string; stderr?: string }>(
+        // Pre-flight: fix invalid plugin keys (e.g. "provider" in telegram config) that
+        // crash openclaw on startup, then restart the process so the fix takes effect.
+        //
+        // NOTE: exec stdout is always empty (HyperCLI exec is fire-and-forget — the API
+        // returns 201 immediately and runs the command async). So we always assume the
+        // fix ran and always wait for the restart. Keep the command short and POSIX-only.
+        //
+        // Strategy: use sed -i to remove "provider" lines from the config file (safe
+        // for pretty-printed JSON where each key is on its own line), then pkill so
+        // the supervisor restarts openclaw with the repaired config.
+        const fixCmd = [
+          // Remove invalid "provider" key from all openclaw.json files we can find
+          `for _f in /root/.openclaw/openclaw.json /home/ubuntu/.openclaw/openclaw.json; do`,
+          `  [ -f "$_f" ] && sed -i '/"provider"/d' "$_f" 2>/dev/null;`,
+          `done`,
+          // Restart openclaw so the fixed config is loaded
+          `pkill -f openclaw 2>/dev/null || true`,
+          `echo x`,
+        ].join(" ");
+        const fixResp = await apiFetch<{ exit_code?: number; stdout?: string; output?: string; stderr?: string }>(
           `/agents/${agent.id}/exec`, prefixToken,
-          { method: "POST", body: JSON.stringify({ command: preflightCmd }) }
+          { method: "POST", body: JSON.stringify({ command: fixCmd, timeout: 10 }) }
         );
-        const preResult = (preResp.stdout ?? preResp.output ?? "").trim();
-        const preStderr = (preResp.stderr ?? "").trim();
-        console.log("[gateway] Pre-flight config check:", preResult || "(empty)", preStderr ? `stderr: ${preStderr}` : "");
-        // Run doctor --fix + pkill whenever config was changed, not found, or script failed.
-        // pkill forces the supervisor to restart openclaw with the freshly-written config.
-        // Note: preResult may contain a leading "conf:<path>" line — check last status line.
-        const preStatus = preResult.split("\n").map((l) => l.trim()).filter(Boolean).at(-1) ?? "";
-        const needsRestart = preStatus === "fixed" || preStatus === "notfound" || preResult === "";
-        if (needsRestart) {
-          console.log("[gateway] Config changed or notfound — restarting openclaw...");
-          try {
-            const restartCmd = [
-              // 1. Let doctor repair any remaining schema issues
-              "openclaw doctor --fix 2>&1 || true",
-              // 2. Kill openclaw process — supervisor will restart it with the fixed config
-              "sleep 1",
-              "pkill -f openclaw 2>/dev/null || true",
-              "echo 'restarted'",
-            ].join("; ");
-            const restartResp = await apiFetch<{ stdout?: string; output?: string }>(
-              `/agents/${agent.id}/exec`, prefixToken, {
-              method: "POST",
-              body: JSON.stringify({ command: restartCmd, timeout: 20 }),
-            });
-            console.log("[gateway] restart:", (restartResp.stdout ?? restartResp.output ?? "").trim());
-          } catch {}
-          console.log("[gateway] Waiting for gateway restart...");
-          await new Promise((r) => setTimeout(r, 15_000));
-        }
+        const fixOut = (fixResp.stdout ?? fixResp.output ?? "").trim();
+        const fixErr = (fixResp.stderr ?? "").trim();
+        console.log("[gateway] Pre-flight fix:", {
+          exit_code: fixResp.exit_code,
+          stdout: fixOut || "(empty)",
+          stderr: fixErr || "(empty)",
+        });
+        // Always wait for openclaw to restart — exec is async so we can't confirm
+        console.log("[gateway] Waiting for openclaw restart...");
+        await new Promise((r) => setTimeout(r, 15_000));
       } catch (e) {
         console.warn("[gateway] Pre-flight config check failed:", e);
       }
