@@ -182,8 +182,39 @@ function ensureLiFiConfig(provider: EthereumProvider) {
 }
 
 // ---------------------------------------------------------------------------
+// Direct ERC-20 transfer on Base (for USDC payments — no bridge needed)
+// ---------------------------------------------------------------------------
+
+async function sendUsdcOnBase(
+  provider: EthereumProvider,
+  fromAddress: string,
+  toAddress: string,
+  amountUsdc: number, // dollar amount — converted to 6-decimal units internally
+): Promise<string> {
+  // Switch to Base
+  await provider.request({
+    method: "wallet_switchEthereumChain",
+    params: [{ chainId: "0x2105" }], // Base = 8453
+  });
+
+  // ABI-encode: transfer(address,uint256)
+  // selector: 0xa9059cbb
+  const amount = BigInt(Math.round(amountUsdc * 1_000_000));
+  const paddedTo = toAddress.replace("0x", "").toLowerCase().padStart(64, "0");
+  const paddedAmount = amount.toString(16).padStart(64, "0");
+  const data = `0xa9059cbb${paddedTo}${paddedAmount}`;
+
+  const txHash = (await provider.request({
+    method: "eth_sendTransaction",
+    params: [{ from: fromAddress, to: BASE_USDC, data }],
+  })) as string;
+
+  return txHash;
+}
+
+// ---------------------------------------------------------------------------
 // Cross-chain swap + subscribe via LI.FI SDK
-// BNB (BSC) → Base USDC  or  USDC (Base) → Base USDC (same-chain)
+// BNB (BSC) → Base USDC  or  USDC direct transfer on Base
 // ---------------------------------------------------------------------------
 
 export type SwapStep =
@@ -216,123 +247,96 @@ export async function swapAndSubscribe(
     throw new Error("Operator wallet not configured (NEXT_PUBLIC_X402_WALLET_ADDRESS)");
   }
 
-  onStep?.("quoting");
-
   // 1. Connect EVM wallet
   const wallet = await connectEvmWallet();
 
-  // 2. Init LI.FI SDK
-  ensureLiFiConfig(wallet.provider);
+  let txHash = "";
+  const fromChainId = payToken === "bnb" ? BSC_CHAIN_ID : BASE_CHAIN_ID;
 
-  // 3. Build quote params
-  const toAmountUsdc = String(Math.round(amountUsd * 1_000_000));
+  if (payToken === "usdc") {
+    // Direct ERC-20 USDC transfer on Base — no bridge, no LI.FI
+    onStep?.("swapping", "Confirm USDC transfer in wallet...");
+    console.log(`[swap] Direct USDC transfer on Base: $${amountUsd}`);
+    txHash = await sendUsdcOnBase(wallet.provider, wallet.address, OPERATOR_WALLET, amountUsd);
+    console.log("[swap] USDC transfer txHash:", txHash);
+  } else {
+    // BNB on BSC → Base USDC via LI.FI
+    onStep?.("quoting");
+    ensureLiFiConfig(wallet.provider);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let quoteParams: any;
-
-  if (payToken === "bnb") {
-    // BNB on BSC → USDC on Base
-    quoteParams = {
+    const quoteParams = {
       fromChain: BSC_CHAIN_ID,
       toChain: BASE_CHAIN_ID,
       fromToken: BNB_NATIVE,
       toToken: BASE_USDC,
-      toAmount: toAmountUsdc,
+      toAmount: String(Math.round(amountUsd * 1_000_000)),
       fromAddress: wallet.address,
       toAddress: OPERATOR_WALLET,
       slippage: 0.03,
     };
-    console.log(`[swap] BNB→Base quote: deliver ${amountUsd} USDC on Base`);
-  } else {
-    // USDC on Base → USDC on Base (same-chain)
-    quoteParams = {
-      fromChain: BASE_CHAIN_ID,
-      toChain: BASE_CHAIN_ID,
-      fromToken: BASE_USDC,
-      toToken: BASE_USDC,
-      fromAmount: toAmountUsdc,
-      fromAddress: wallet.address,
-      toAddress: OPERATOR_WALLET,
-      slippage: 0.001,
-    };
-    console.log(`[swap] Base USDC direct: ${amountUsd} USDC on Base`);
-  }
+    console.log(`[swap] BNB→Base quote: deliver $${amountUsd} USDC on Base`);
 
-  const quote = await getLiFiQuote(quoteParams);
-
-  console.log("[swap] LI.FI quote:", {
-    fromToken: quote.action.fromToken.symbol,
-    fromAmount: quote.action.fromAmount,
-    toAmount: quote.estimate.toAmount,
-    tool: quote.tool,
-  });
-
-  // 4. Execute route
-  const route = convertQuoteToRoute(quote);
-  let txHash = "";
-
-  try {
-    const executedRoute: RouteExtended = await executeRoute(route, {
-      updateRouteHook(updatedRoute) {
-        for (const step of updatedRoute.steps) {
-          if (!step.execution?.process) continue;
-          for (const process of step.execution.process) {
-            if (process.txHash && !txHash) {
-              txHash = process.txHash;
-            }
-
-            console.log(`[swap] type=${process.type} status=${process.status} txHash=${process.txHash || "—"}`);
-
-            switch (process.type) {
-              case "TOKEN_ALLOWANCE":
-                if (process.status === "PENDING" || process.status === "STARTED") {
-                  onStep?.("approving");
-                }
-                break;
-              case "SWAP":
-              case "CROSS_CHAIN":
-                if (process.status === "ACTION_REQUIRED") {
-                  onStep?.("swapping", "Sign transaction in wallet...");
-                } else if (process.status === "PENDING" || process.status === "STARTED") {
-                  onStep?.("swapping");
-                }
-                break;
-              case "RECEIVING_CHAIN":
-                onStep?.("bridging", txHash || undefined);
-                break;
-            }
-          }
-        }
-      },
+    const quote = await getLiFiQuote(quoteParams);
+    console.log("[swap] LI.FI quote:", {
+      fromToken: quote.action.fromToken.symbol,
+      fromAmount: quote.action.fromAmount,
+      toAmount: quote.estimate.toAmount,
+      tool: quote.tool,
     });
 
-    if (!txHash) {
-      for (const step of executedRoute.steps) {
-        const proc = step.execution?.process?.find((p) => p.txHash);
-        if (proc?.txHash) {
-          txHash = proc.txHash;
-          break;
+    const route = convertQuoteToRoute(quote);
+
+    try {
+      const executedRoute: RouteExtended = await executeRoute(route, {
+        updateRouteHook(updatedRoute) {
+          for (const step of updatedRoute.steps) {
+            if (!step.execution?.process) continue;
+            for (const process of step.execution.process) {
+              if (process.txHash && !txHash) txHash = process.txHash;
+
+              console.log(`[swap] type=${process.type} status=${process.status} txHash=${process.txHash || "—"}`);
+
+              switch (process.type) {
+                case "TOKEN_ALLOWANCE":
+                  if (process.status === "PENDING" || process.status === "STARTED")
+                    onStep?.("approving");
+                  break;
+                case "SWAP":
+                case "CROSS_CHAIN":
+                  if (process.status === "ACTION_REQUIRED")
+                    onStep?.("swapping", "Sign transaction in wallet...");
+                  else if (process.status === "PENDING" || process.status === "STARTED")
+                    onStep?.("swapping");
+                  break;
+                case "RECEIVING_CHAIN":
+                  onStep?.("bridging", txHash || undefined);
+                  break;
+              }
+            }
+          }
+        },
+      });
+
+      if (!txHash) {
+        for (const step of executedRoute.steps) {
+          const proc = step.execution?.process?.find((p) => p.txHash);
+          if (proc?.txHash) { txHash = proc.txHash; break; }
         }
       }
+    } catch (err: unknown) {
+      const error = err as { message?: string };
+      console.error("[swap] executeRoute failed:", { message: error.message, txHash });
+      throw new Error(
+        `Swap failed: ${error.message || "Unknown error"}${txHash ? ` (tx: ${txHash})` : ""}`,
+      );
     }
-  } catch (err: unknown) {
-    const error = err as { message?: string; code?: string };
-    console.error("[swap] executeRoute failed:", { message: error.message, txHash });
-    throw new Error(
-      `Swap failed: ${error.message || "Unknown error"}${txHash ? ` (tx: ${txHash})` : ""}`,
-    );
+
+    if (!txHash) throw new Error("Swap completed but no transaction hash found");
+    console.log("[swap] Route executed, txHash:", txHash);
   }
 
-  console.log("[swap] Route executed, txHash:", txHash);
-
-  if (!txHash) {
-    throw new Error("Swap completed but no transaction hash found");
-  }
-
-  // 5. Backend does server-side x402 subscribe
+  // Backend subscribe
   onStep?.("subscribing");
-
-  const fromChainId = payToken === "bnb" ? BSC_CHAIN_ID : BASE_CHAIN_ID;
 
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;

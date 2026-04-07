@@ -56,7 +56,7 @@ const SWAP_STEP_LABELS: Record<SwapStep, string> = {
   idle: "",
   quoting: "Getting swap quote...",
   approving: "Approve token spend...",
-  swapping: "Confirm transaction in wallet...",
+  swapping: "Confirm in wallet...",
   bridging: "Bridging to Base...",
   subscribing: "Activating subscription...",
   done: "Done!",
