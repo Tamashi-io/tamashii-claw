@@ -425,6 +425,15 @@ export class GatewayClient {
           rej(new Error("Connection closed"));
         }
         this.pending.clear();
+        // If the WebSocket closed before the handshake finished, reject the
+        // connect() Promise immediately instead of waiting for the 60s timeout.
+        // This happens when the backend proxy closes early (e.g. upstream 503).
+        if (handshakePhase !== "done") {
+          clearTimeout(timeout);
+          const reason = ev.reason ? `${ev.code} ${ev.reason}` : `WebSocket closed (${ev.code})`;
+          reject(new Error(reason));
+          return;
+        }
         // Notify close handlers (only after successful handshake)
         if (wasConnected) {
           for (const h of this.closeHandlers) {
