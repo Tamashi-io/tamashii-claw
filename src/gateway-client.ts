@@ -561,6 +561,36 @@ export class GatewayClient {
     }
   }
 
+  async configApply(config: Record<string, unknown>): Promise<void> {
+    const r = await this.call<any>("config.get");
+    const baseHash = r.hash ?? r.baseHash ?? "";
+    try {
+      await this.call("config.apply", {
+        raw: JSON.stringify(config),
+        baseHash,
+      }, 30_000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === "Connection closed") return;
+      throw err;
+    }
+  }
+
+  async configSet(config: Record<string, unknown>): Promise<void> {
+    const r = await this.call<any>("config.get");
+    const baseHash = r.hash ?? r.baseHash ?? "";
+    try {
+      await this.call("config.set", {
+        raw: JSON.stringify(config),
+        baseHash,
+      }, 30_000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === "Connection closed") return;
+      throw err;
+    }
+  }
+
   async modelsList(): Promise<any[]> {
     const r = await this.call<any>("models.list");
     return r.models ?? [];
@@ -641,5 +671,36 @@ export class GatewayClient {
 
   async execDeny(execId: string): Promise<void> {
     await this.call("exec.deny", { execId });
+  }
+
+  async sessionsReset(sessionKey: string, reason: "new" | "reset" = "reset"): Promise<void> {
+    await this.call("sessions.reset", { sessionKey, reason });
+  }
+
+  async sessionsPreview(sessionKey: string, limit = 5): Promise<any[]> {
+    const r = await this.call<any>("sessions.preview", { sessionKey, limit });
+    return r.messages ?? [];
+  }
+
+  async channelsStatus(probe = false, timeoutMs?: number): Promise<Record<string, unknown>> {
+    const params: Record<string, unknown> = { probe };
+    if (timeoutMs !== undefined) params.timeoutMs = timeoutMs;
+    return this.call("channels.status", params);
+  }
+
+  async channelsLogout(channel: string, accountId?: string): Promise<Record<string, unknown>> {
+    const params: Record<string, unknown> = { channel };
+    if (accountId) params.accountId = accountId;
+    return this.call("channels.logout", params);
+  }
+
+  async agentGet(agentId?: string): Promise<any> {
+    const params: Record<string, unknown> = {};
+    if (agentId) params.agentId = agentId;
+    return this.call("agents.get", params);
+  }
+
+  async status(): Promise<Record<string, unknown>> {
+    return this.call("status");
   }
 }
