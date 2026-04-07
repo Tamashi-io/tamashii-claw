@@ -222,45 +222,9 @@ export function useGatewayChat(
       let lastError = "";
       let configFixAttempted = false;
 
-      // Pre-flight: overwrite openclaw.json with a minimal valid config.
-      //
-      // With sync_enabled=true, HyperCLI syncs the container filesystem to
-      // object storage. A bad config (e.g. telegram.provider invalid key) is
-      // persisted there and restored onto every new agent — including freshly
-      // created ones. DELETE consistently returns "Pod file delete failed"
-      // when the pod's file-manager sidecar is down (crash-loop).
-      //
-      // PUT /files/upload writes directly to the sync storage layer and works
-      // even when the pod is unhealthy. On the next OpenClaw restart the clean
-      // config is read instead of the bad one, breaking the crash loop.
-      try {
-        const prefixToken = await getToken();
-        // Minimal valid config — no plugins configured, so no invalid keys.
-        const cleanConfig = JSON.stringify({ plugins: { entries: {} } });
-        const configPaths = [
-          "/root/.openclaw/openclaw.json",
-          "/home/ubuntu/.openclaw/openclaw.json",
-        ];
-        const uploadResults = await Promise.allSettled(
-          configPaths.map((p) =>
-            apiFetch(
-              `/agents/${agent.id}/files/upload?path=${encodeURIComponent(p)}`,
-              prefixToken,
-              { method: "PUT", body: cleanConfig }
-            ).catch((e) => ({ _error: String(e) }))
-          )
-        );
-        console.log(
-          "[gateway] Pre-flight config upload:",
-          uploadResults.map((r, i) => ({
-            path: configPaths[i],
-            status: r.status,
-            value: r.status === "fulfilled" ? r.value : r.reason,
-          }))
-        );
-      } catch (e) {
-        console.warn("[gateway] Pre-flight config upload failed:", e);
-      }
+      // configFixed tracks whether we've already attempted a crash-loop recovery
+      // (upload clean config + restart) so we only do it once per connect call.
+      let configFixed = false;
 
       // Auto-update OpenClaw agent to latest version (fixes chat crash bug).
       // The `openclaw update` command requires TTY confirmation for "downgrades",
@@ -352,6 +316,51 @@ export function useGatewayChat(
           }
 
           gw = null;
+
+          // Crash-loop recovery: first 503 → upload clean config + restart pod.
+          // We only do this once. The upload writes {"plugins":{"entries":{}}} to
+          // HyperCLI's sync storage (works even when the pod is unhealthy), then
+          // stop+start forces a fresh boot so OpenClaw reads the clean config.
+          // Note: this clears plugin settings — only triggered on confirmed 503.
+          if (lastError.includes("503") && !configFixed && agent) {
+            configFixed = true;
+            console.log("[gateway] 503 detected — uploading clean config and restarting agent...");
+            setError("Repairing agent configuration...");
+            try {
+              const fixToken = await getToken();
+              const cleanConfig = JSON.stringify({ plugins: { entries: {} } });
+              const configPaths = [
+                "/root/.openclaw/openclaw.json",
+                "/home/ubuntu/.openclaw/openclaw.json",
+              ];
+              const uploadResults = await Promise.allSettled(
+                configPaths.map((p) =>
+                  apiFetch(
+                    `/agents/${agent.id}/files/upload?path=${encodeURIComponent(p)}`,
+                    fixToken,
+                    { method: "PUT", body: cleanConfig }
+                  ).catch((e) => ({ _error: String(e) }))
+                )
+              );
+              console.log("[gateway] Config upload:", uploadResults.map((r, i) => ({
+                path: configPaths[i],
+                ok: r.status === "fulfilled",
+              })));
+
+              // Stop then start the pod so it boots with the clean config.
+              await apiFetch(`/agents/${agent.id}/stop`, fixToken, { method: "POST" }).catch(() => {});
+              console.log("[gateway] Agent stopped, waiting for restart...");
+              setError("Restarting agent... (this takes ~45s)");
+              await new Promise((r) => setTimeout(r, 5_000)); // let stop settle
+              await apiFetch(`/agents/${agent.id}/start`, fixToken, { method: "POST" }).catch(() => {});
+              // Wait for pod to boot + OpenClaw to start listening
+              await new Promise((r) => setTimeout(r, 45_000));
+              setError("Reconnecting...");
+            } catch (fixErr) {
+              console.warn("[gateway] Crash-loop recovery failed:", fixErr);
+            }
+            continue; // skip normal retry delay — go straight to next attempt
+          }
 
           // Auto-fix: patch gateway config for token mismatch
           if (lastError.includes("token mismatch") && !configFixAttempted && agent) {
