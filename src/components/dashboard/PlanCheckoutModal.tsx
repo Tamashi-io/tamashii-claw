@@ -6,11 +6,11 @@ import { X, CreditCard, Coins, Wallet, Check, Loader2 } from "lucide-react";
 import { Plan, formatTokens } from "@/lib/format";
 import { apiFetch, getSubscriptionStatus } from "@/lib/api";
 import {
-  connectSolanaWallet,
-  getSolanaWalletState,
+  connectEvmWallet,
+  getEvmWalletState,
   swapAndSubscribe,
   type SwapStep,
-  type SolPayToken,
+  type CryptoPayToken,
 } from "@/lib/x402";
 
 /** Parse nested x402 / facilitator error into a human-readable message. */
@@ -56,7 +56,7 @@ const SWAP_STEP_LABELS: Record<SwapStep, string> = {
   idle: "",
   quoting: "Getting swap quote...",
   approving: "Approve token spend...",
-  swapping: "Confirm transaction in Phantom...",
+  swapping: "Confirm transaction in wallet...",
   bridging: "Bridging to Base...",
   subscribing: "Activating subscription...",
   done: "Done!",
@@ -70,13 +70,13 @@ export function PlanCheckoutModal({
   getToken,
 }: PlanCheckoutModalProps) {
   const [method, setMethod] = useState<PaymentMethod>("card");
-  const [solPayToken, setSolPayToken] = useState<SolPayToken>("sol");
+  const [cryptoPayToken, setCryptoPayToken] = useState<CryptoPayToken>("bnb");
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [swapStep, setSwapStep] = useState<SwapStep>("idle");
   const [walletAddress, setWalletAddress] = useState<string | null>(
-    () => getSolanaWalletState()?.address ?? null,
+    () => getEvmWalletState()?.address ?? null,
   );
 
   const handleClose = () => {
@@ -84,7 +84,7 @@ export function PlanCheckoutModal({
     setError(null);
     setSuccess(false);
     setMethod("card");
-    setSolPayToken("sol");
+    setCryptoPayToken("bnb");
     setSwapStep("idle");
     onClose();
   };
@@ -116,30 +116,30 @@ export function PlanCheckoutModal({
     }
   };
 
-  /* -- Connect Solana wallet ----------------------------------------------- */
+  /* -- Connect EVM wallet -------------------------------------------------- */
   const handleConnectWallet = async () => {
     setProcessing(true);
     setError(null);
     try {
-      const wallet = await connectSolanaWallet();
+      const wallet = await connectEvmWallet();
       setWalletAddress(wallet.address);
     } catch (err: unknown) {
       setError(
-        err instanceof Error ? err.message : "Failed to connect wallet. Is Phantom installed?",
+        err instanceof Error ? err.message : "Failed to connect wallet. Is MetaMask installed?",
       );
     } finally {
       setProcessing(false);
     }
   };
 
-  /* -- Solana swap via LI.FI ----------------------------------------------- */
+  /* -- EVM swap via LI.FI -------------------------------------------------- */
   const handleCryptoSolana = async () => {
     setProcessing(true);
     setError(null);
     setSwapStep("quoting");
     try {
       const token = await getToken();
-      console.log("[checkout] Starting Solana swap-subscribe for plan:", plan.id, "token:", solPayToken);
+      console.log("[checkout] Starting swap-subscribe for plan:", plan.id, "token:", cryptoPayToken);
       const result = await swapAndSubscribe(
         plan.id,
         plan.price,
@@ -148,7 +148,7 @@ export function PlanCheckoutModal({
           console.log("[checkout] Swap step:", step);
           setSwapStep(step);
         },
-        solPayToken,
+        cryptoPayToken,
       );
       console.log("[checkout] Swap-subscribe result:", result);
 
@@ -190,8 +190,8 @@ export function PlanCheckoutModal({
     if (processing && swapStep !== "idle") return SWAP_STEP_LABELS[swapStep];
     if (processing) return "Processing...";
     if (method === "card") return `Pay $${displayPrice} with Card`;
-    if (!walletAddress) return "Connect Phantom Wallet";
-    const tokenLabel = solPayToken === "sol" ? "SOL" : "USDC";
+    if (!walletAddress) return "Connect Wallet";
+    const tokenLabel = cryptoPayToken === "bnb" ? "BNB" : "USDC";
     return `Swap ${tokenLabel} & Pay $${displayPrice}`;
   };
 
@@ -303,16 +303,16 @@ export function PlanCheckoutModal({
                       >
                         <Coins className="w-5 h-5 text-foreground" />
                         <div className="text-sm font-medium text-foreground">
-                          Solana
+                          BNB &amp; Base
                         </div>
                         <div className="text-xs text-text-muted">
-                          SOL or USDC
+                          BNB or USDC
                         </div>
                       </button>
                     </div>
                   </div>
 
-                  {/* Token selector (Solana crypto only) */}
+                  {/* Token selector (crypto only) */}
                   {method === "crypto" && (
                     <div className="mb-4">
                       <label className="block text-xs font-medium text-text-secondary mb-2">
@@ -321,23 +321,23 @@ export function PlanCheckoutModal({
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
-                          onClick={() => setSolPayToken("sol")}
+                          onClick={() => setCryptoPayToken("bnb")}
                           disabled={processing}
                           className={`px-3 py-2.5 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                            solPayToken === "sol"
+                            cryptoPayToken === "bnb"
                               ? "border-primary/60 bg-primary/10 text-foreground"
                               : "border-border text-text-muted hover:border-border-medium"
                           } disabled:opacity-50`}
                         >
-                          <span className="w-4 h-4 rounded-full bg-gradient-to-br from-[#9945FF] to-[#14F195] inline-block" />
-                          SOL
+                          <span className="w-4 h-4 rounded-full bg-gradient-to-br from-[#F3BA2F] to-[#F0B90B] inline-block" />
+                          BNB
                         </button>
                         <button
                           type="button"
-                          onClick={() => setSolPayToken("usdc")}
+                          onClick={() => setCryptoPayToken("usdc")}
                           disabled={processing}
                           className={`px-3 py-2.5 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                            solPayToken === "usdc"
+                            cryptoPayToken === "usdc"
                               ? "border-[#2775CA]/60 bg-[#2775CA]/10 text-foreground"
                               : "border-border text-text-muted hover:border-border-medium"
                           } disabled:opacity-50`}
@@ -356,28 +356,28 @@ export function PlanCheckoutModal({
                         <div className="flex items-center gap-2 text-text-secondary">
                           <Wallet className="w-4 h-4 text-primary flex-shrink-0" />
                           <span className="font-mono text-xs">
-                            {walletAddress.slice(0, 4)}...
+                            {walletAddress.slice(0, 6)}...
                             {walletAddress.slice(-4)}
                           </span>
                           <span className="text-text-muted ml-auto">
-                            {solPayToken === "sol"
-                              ? `~$${displayPrice} in SOL`
+                            {cryptoPayToken === "bnb"
+                              ? `~$${displayPrice} in BNB`
                               : `${displayPrice} USDC`}
                             {" \u2192 Base"}
                           </span>
                         </div>
                       ) : (
                         <p className="text-text-muted">
-                          Connect your Phantom wallet to pay{" "}
+                          Connect your wallet to pay{" "}
                           <span className="text-foreground font-medium">
-                            {solPayToken === "sol"
-                              ? `~$${displayPrice} in SOL`
-                              : `$${displayPrice} USDC`}
-                          </span>{" "}
-                          on Solana.
+                            {cryptoPayToken === "bnb"
+                              ? `~$${displayPrice} in BNB`
+                              : `$${displayPrice} USDC on Base`}
+                          </span>.
                           <span className="block text-xs mt-1 text-text-tertiary">
-                            {solPayToken === "sol" ? "SOL" : "USDC"} will be
-                            swapped &amp; bridged to Base USDC via LI.FI.
+                            {cryptoPayToken === "bnb"
+                              ? "BNB will be swapped & bridged to Base USDC via LI.FI."
+                              : "USDC sent directly on Base."}
                           </span>
                         </p>
                       )}

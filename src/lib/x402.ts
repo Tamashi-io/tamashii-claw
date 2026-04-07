@@ -17,10 +17,8 @@ import {
   convertQuoteToRoute,
   executeRoute,
   EVM,
-  Solana as LiFiSolana,
   type RouteExtended,
 } from "@lifi/sdk";
-import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
 import { API_BASE } from "./api";
 
 /** Backend API for payment proxying */
@@ -28,64 +26,27 @@ const X402_PROXY_BASE =
   process.env.NEXT_PUBLIC_TAMASHIICLAW_API_URL || "/api";
 
 // ---------------------------------------------------------------------------
-// Solana config
+// Chain & token constants
 // ---------------------------------------------------------------------------
 
-/** Solana chain ID used by LI.FI */
-const SOLANA_CHAIN_ID = 1151111081099710;
-
-/** USDC-SPL on Solana */
-const SOLANA_USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
-
-/** SOL native token address (LI.FI convention) */
-const SOLANA_NATIVE = "11111111111111111111111111111111";
-
-/** Base USDC address (destination) */
-const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+/** BSC chain ID */
+const BSC_CHAIN_ID = 56;
+/** BNB native token on BSC (LI.FI convention) */
+const BNB_NATIVE = "0x0000000000000000000000000000000000000000";
 
 /** Base chain ID */
 const BASE_CHAIN_ID = 8453;
+/** USDC on Base */
+const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 
 /** Operator wallet on Base that receives swap proceeds */
 const OPERATOR_WALLET =
   process.env.NEXT_PUBLIC_X402_WALLET_ADDRESS || "";
 
-export type SolPayToken = "sol" | "usdc";
+export type CryptoPayToken = "bnb" | "usdc";
 
 // ---------------------------------------------------------------------------
-// Solana Wallet
-// ---------------------------------------------------------------------------
-
-interface SolanaWalletState {
-  adapter: PhantomWalletAdapter;
-  address: string;
-}
-
-let solWalletState: SolanaWalletState | null = null;
-
-export async function connectSolanaWallet(): Promise<SolanaWalletState> {
-  if (solWalletState?.adapter.connected) return solWalletState;
-
-  const adapter = new PhantomWalletAdapter();
-  await adapter.connect();
-
-  if (!adapter.publicKey) {
-    throw new Error("Failed to connect Solana wallet");
-  }
-
-  solWalletState = {
-    adapter,
-    address: adapter.publicKey.toBase58(),
-  };
-  return solWalletState;
-}
-
-export function getSolanaWalletState(): SolanaWalletState | null {
-  return solWalletState;
-}
-
-// ---------------------------------------------------------------------------
-// EVM wallet (kept for Base — used by x402 direct payment if needed)
+// EVM Wallet
 // ---------------------------------------------------------------------------
 
 interface EthereumProvider {
@@ -97,6 +58,33 @@ interface EthereumProvider {
 function getEvmProvider(): EthereumProvider | null {
   const win = window as Window & { ethereum?: EthereumProvider };
   return win.ethereum ?? null;
+}
+
+interface EvmWalletState {
+  address: string;
+  provider: EthereumProvider;
+}
+
+let evmWalletState: EvmWalletState | null = null;
+
+export async function connectEvmWallet(): Promise<EvmWalletState> {
+  if (evmWalletState) return evmWalletState;
+
+  const provider = getEvmProvider();
+  if (!provider) throw new Error("No EVM wallet found. Please install MetaMask.");
+
+  const accounts = (await provider.request({
+    method: "eth_requestAccounts",
+  })) as string[];
+
+  if (!accounts[0]) throw new Error("No accounts returned from wallet.");
+
+  evmWalletState = { address: accounts[0], provider };
+  return evmWalletState;
+}
+
+export function getEvmWalletState(): EvmWalletState | null {
+  return evmWalletState;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,71 +134,56 @@ function buildPaymentApi(wallet: WalletClient): AxiosInstance {
 }
 
 // ---------------------------------------------------------------------------
-// LI.FI SDK config
+// LI.FI SDK config (EVM only)
 // ---------------------------------------------------------------------------
 
 let lifiConfigured = false;
 
-function ensureLiFiConfig(solanaAdapter: PhantomWalletAdapter) {
+function ensureLiFiConfig(provider: EthereumProvider) {
   if (lifiConfigured) return;
 
-  const evmProvider = getEvmProvider();
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const providers: any[] = [
-    // Solana provider for source chain
-    LiFiSolana({
-      getWalletAdapter: async () => solanaAdapter,
-    }),
-  ];
-
-  // Add EVM provider if available (for Base destination receiving)
-  if (evmProvider) {
-    providers.push(
+  createLiFiConfig({
+    integrator: "tamashiiclaw",
+    apiKey: "78f7f602-5c2f-4680-983d-ede8cb278ba1.f4bb8d00-3ac5-46a8-88a0-ff8db370c98a",
+    providers: [
       EVM({
         getWalletClient: async () => {
-          const accounts = (await evmProvider.request({
+          const accounts = (await provider.request({
             method: "eth_requestAccounts",
           })) as string[];
           return createWalletClient({
             account: accounts[0] as `0x${string}`,
             chain: base,
-            transport: custom(evmProvider),
+            transport: custom(provider),
           });
         },
         switchChain: async (chainId: number) => {
           const hexId = `0x${chainId.toString(16)}`;
-          await evmProvider.request({
+          await provider.request({
             method: "wallet_switchEthereumChain",
             params: [{ chainId: hexId }],
           });
-          const accounts = (await evmProvider.request({
+          const accounts = (await provider.request({
             method: "eth_requestAccounts",
           })) as string[];
           const chain: Chain = base;
           return createWalletClient({
             account: accounts[0] as `0x${string}`,
             chain,
-            transport: custom(evmProvider),
+            transport: custom(provider),
           });
         },
       }),
-    );
-  }
-
-  createLiFiConfig({
-    integrator: "tamashiiclaw",
-    apiKey: "78f7f602-5c2f-4680-983d-ede8cb278ba1.f4bb8d00-3ac5-46a8-88a0-ff8db370c98a",
-    providers,
+    ],
   });
 
   lifiConfigured = true;
-  console.log("[lifi] SDK configured with Solana + EVM providers");
+  console.log("[lifi] SDK configured with EVM provider");
 }
 
 // ---------------------------------------------------------------------------
 // Cross-chain swap + subscribe via LI.FI SDK
-// (Solana → Base USDC → operator wallet → server-side x402)
+// BNB (BSC) → Base USDC  or  USDC (Base) → Base USDC (same-chain)
 // ---------------------------------------------------------------------------
 
 export type SwapStep =
@@ -224,21 +197,20 @@ export type SwapStep =
   | "error";
 
 /**
- * Full Solana swap + subscribe flow using LI.FI SDK:
- * 1. Connect Phantom wallet
+ * Full EVM swap + subscribe flow using LI.FI SDK:
+ * 1. Connect EVM wallet (MetaMask / any injected)
  * 2. LI.FI SDK: getQuote → convertQuoteToRoute → executeRoute
- *    (handles approvals, swaps, bridging, tx submission, status tracking)
  * 3. Backend does server-side x402 subscribe with the operator wallet
  *
- * For SOL: uses toAmount so LI.FI calculates exact SOL needed.
- * For USDC-SPL: uses fromAmount (6-decimal USDC on Solana).
+ * For BNB: BSC → Base USDC cross-chain swap
+ * For USDC: Base → Base USDC same-chain transfer
  */
 export async function swapAndSubscribe(
   planId: string,
   amountUsd: number,
   token?: string,
   onStep?: (step: SwapStep, detail?: string) => void,
-  payToken: SolPayToken = "sol",
+  payToken: CryptoPayToken = "bnb",
 ): Promise<{ ok: boolean; plan_id: string; expires_at: string }> {
   if (!OPERATOR_WALLET) {
     throw new Error("Operator wallet not configured (NEXT_PUBLIC_X402_WALLET_ADDRESS)");
@@ -246,48 +218,44 @@ export async function swapAndSubscribe(
 
   onStep?.("quoting");
 
-  // 1. Connect Solana wallet
-  const wallet = await connectSolanaWallet();
+  // 1. Connect EVM wallet
+  const wallet = await connectEvmWallet();
 
-  // 2. Init LI.FI SDK with Solana adapter
-  ensureLiFiConfig(wallet.adapter);
+  // 2. Init LI.FI SDK
+  ensureLiFiConfig(wallet.provider);
 
-  // 3. Get quote from LI.FI SDK
-  const fromToken = payToken === "sol" ? SOLANA_NATIVE : SOLANA_USDC;
-
-  // Base USDC has 6 decimals
-  const toAmountUsdc = String(amountUsd * 1_000_000);
+  // 3. Build quote params
+  const toAmountUsdc = String(Math.round(amountUsd * 1_000_000));
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let quoteParams: any;
 
-  if (payToken === "sol") {
-    // toAmount mode: "deliver X USDC on Base, calculate SOL needed"
+  if (payToken === "bnb") {
+    // BNB on BSC → USDC on Base
     quoteParams = {
-      fromChain: SOLANA_CHAIN_ID,
+      fromChain: BSC_CHAIN_ID,
       toChain: BASE_CHAIN_ID,
-      fromToken,
+      fromToken: BNB_NATIVE,
       toToken: BASE_USDC,
       toAmount: toAmountUsdc,
       fromAddress: wallet.address,
       toAddress: OPERATOR_WALLET,
-      slippage: 0.03, // 3% slippage
+      slippage: 0.03,
     };
-    console.log(`[swap] Requesting toAmount quote: ${amountUsd} USDC on Base, pay with SOL`);
+    console.log(`[swap] BNB→Base quote: deliver ${amountUsd} USDC on Base`);
   } else {
-    // fromAmount mode: "send X USDC from Solana" (6 decimals on Solana too)
-    const fromAmount = String(amountUsd * 1_000_000);
+    // USDC on Base → USDC on Base (same-chain)
     quoteParams = {
-      fromChain: SOLANA_CHAIN_ID,
+      fromChain: BASE_CHAIN_ID,
       toChain: BASE_CHAIN_ID,
-      fromToken,
+      fromToken: BASE_USDC,
       toToken: BASE_USDC,
-      fromAmount,
+      fromAmount: toAmountUsdc,
       fromAddress: wallet.address,
       toAddress: OPERATOR_WALLET,
-      slippage: 0.005, // 0.5% slippage for stablecoin
+      slippage: 0.001,
     };
-    console.log(`[swap] Requesting fromAmount quote: ${amountUsd} USDC Solana → Base`);
+    console.log(`[swap] Base USDC direct: ${amountUsd} USDC on Base`);
   }
 
   const quote = await getLiFiQuote(quoteParams);
@@ -296,11 +264,10 @@ export async function swapAndSubscribe(
     fromToken: quote.action.fromToken.symbol,
     fromAmount: quote.action.fromAmount,
     toAmount: quote.estimate.toAmount,
-    toAmountMin: quote.estimate.toAmountMin,
     tool: quote.tool,
   });
 
-  // 4. Convert quote to route and execute via SDK
+  // 4. Execute route
   const route = convertQuoteToRoute(quote);
   let txHash = "";
 
@@ -314,7 +281,7 @@ export async function swapAndSubscribe(
               txHash = process.txHash;
             }
 
-            console.log(`[swap] Process: type=${process.type} status=${process.status} txHash=${process.txHash || "\u2014"}`);
+            console.log(`[swap] type=${process.type} status=${process.status} txHash=${process.txHash || "—"}`);
 
             switch (process.type) {
               case "TOKEN_ALLOWANCE":
@@ -349,13 +316,8 @@ export async function swapAndSubscribe(
       }
     }
   } catch (err: unknown) {
-    const error = err as { message?: string; code?: string; step?: unknown; process?: unknown };
-    console.error("[swap] executeRoute failed:", {
-      message: error.message,
-      code: error.code,
-      txHash,
-      raw: err,
-    });
+    const error = err as { message?: string; code?: string };
+    console.error("[swap] executeRoute failed:", { message: error.message, txHash });
     throw new Error(
       `Swap failed: ${error.message || "Unknown error"}${txHash ? ` (tx: ${txHash})` : ""}`,
     );
@@ -369,12 +331,11 @@ export async function swapAndSubscribe(
 
   // 5. Backend does server-side x402 subscribe
   onStep?.("subscribing");
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
+
+  const fromChainId = payToken === "bnb" ? BSC_CHAIN_ID : BASE_CHAIN_ID;
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const HYPERCLAW_AMOUNTS: Record<string, number> = {
     "1aiu": 20.40,
@@ -384,17 +345,13 @@ export async function swapAndSubscribe(
   };
   const hcAmount = HYPERCLAW_AMOUNTS[planId] ?? amountUsd;
   const amountUsdc = String(Math.round(hcAmount * 1_000_000));
-  console.log("[swap] Calling swap-subscribe endpoint:", { planId, txHash, amountUsdc, hcAmount });
+
+  console.log("[swap] Calling swap-subscribe:", { planId, txHash, amountUsdc, fromChainId });
 
   const res = await fetch(`${API_BASE}/x402/swap-subscribe`, {
     method: "POST",
     headers,
-    body: JSON.stringify({
-      planId,
-      txHash,
-      fromChainId: SOLANA_CHAIN_ID,
-      amount: amountUsdc,
-    }),
+    body: JSON.stringify({ planId, txHash, fromChainId, amount: amountUsdc }),
   });
 
   if (!res.ok) {
@@ -404,13 +361,7 @@ export async function swapAndSubscribe(
   }
 
   const result = await res.json();
-  console.log("[swap] swap-subscribe result:", {
-    ok: result.ok,
-    plan_id: result.plan_id,
-    amount_paid: result.amount_paid,
-    duration_days: result.duration_days,
-    hasKey: !!result.key,
-  });
+  console.log("[swap] swap-subscribe result:", result);
 
   onStep?.("done");
   return result;
