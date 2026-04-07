@@ -213,14 +213,14 @@ export function useGatewayChat(
         // Strategy: use sed -i to remove "provider" lines from the config file (safe
         // for pretty-printed JSON where each key is on its own line), then pkill so
         // the supervisor restarts openclaw with the repaired config.
-        // Simple semicolon-separated one-liner — no for loops to avoid shell syntax issues
-        // when exec joins array elements with spaces (done pkill → invalid).
-        const fixCmd = [
-          `sed -i '/"provider"/d' /root/.openclaw/openclaw.json 2>/dev/null`,
-          `sed -i '/"provider"/d' /home/ubuntu/.openclaw/openclaw.json 2>/dev/null`,
-          `pkill -f openclaw 2>/dev/null || true`,
-          `echo x`,
-        ].join("; ");
+        // Delete the config file entirely so openclaw starts clean from env vars.
+        // Using rm -f avoids all quoting/regex issues (single quotes in sed patterns
+        // break when HyperCLI wraps the command in sh -c '...'). rm -f returns 0
+        // whether or not the files exist. Env vars already set in launch_config:
+        //   OPENCLAW_GATEWAY_MODE=local
+        //   OPENCLAW_GATEWAY_TOKEN=tamashiiclaw-gateway-auth
+        //   OPENCLAW_CONTROL_UI_ALLOWED_ORIGIN=https://claw.tamashi.io
+        const fixCmd = "rm -f /root/.openclaw/openclaw.json /home/ubuntu/.openclaw/openclaw.json; pkill -f openclaw 2>/dev/null; true";
         const fixResp = await apiFetch<{ exit_code?: number; stdout?: string; output?: string; stderr?: string }>(
           `/agents/${agent.id}/exec`, prefixToken,
           { method: "POST", body: JSON.stringify({ command: fixCmd, timeout: 10 }) }
