@@ -53,20 +53,21 @@ export function VoicePanel({ getToken }: VoicePanelProps) {
         fetchInit = {
           method: "POST",
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ text, voice }),
+          body: JSON.stringify({ text, voice, agentId }),
         };
       } else if (mode === "design") {
         endpoint = "/voice/design";
         fetchInit = {
           method: "POST",
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ text, description }),
+          body: JSON.stringify({ text, description, agentId }),
         };
       } else {
         endpoint = "/voice/clone";
         const form = new FormData();
         form.append("text", text);
         form.append("refAudio", refAudioFile!);
+        if (agentId) form.append("agentId", agentId);
         fetchInit = {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
