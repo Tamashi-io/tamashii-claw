@@ -233,6 +233,7 @@ export function ChannelsPanel({ gateway, connected }: ChannelsPanelProps) {
                 <span className="text-text-secondary text-xs mb-1 block">Bot Token</span>
                 <input
                   type="password"
+                  autoComplete="new-password"
                   value={config.token}
                   onChange={(e) => updateChannel(channel.id, "token", e.target.value)}
                   placeholder={channel.placeholder}
