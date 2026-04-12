@@ -132,6 +132,34 @@ export function PlanCheckoutModal({
     }
   };
 
+  /* -- Direct subscribe (retry when derived wallet already funded) ---------- */
+  const handleDirectSubscribe = async () => {
+    setProcessing(true);
+    setError(null);
+    setSwapStep("subscribing");
+    try {
+      const token = await getToken();
+      const HYPERCLAW_AMOUNTS: Record<string, number> = {
+        "1aiu": 20.40, "2aiu": 40, "5aiu": 100, "10aiu": 200,
+      };
+      const hcAmount = HYPERCLAW_AMOUNTS[plan.id] ?? plan.price;
+      const amountUsdc = String(Math.round(hcAmount * 1_000_000));
+      const result = await apiFetch(`/x402/subscribe/${plan.id}`, token, {
+        method: "POST",
+        body: JSON.stringify({ amount: amountUsdc }),
+      });
+      console.log("[checkout] Direct subscribe result:", result);
+      setSuccess(true);
+      setTimeout(() => { handleClose(); window.location.reload(); }, 2000);
+    } catch (err) {
+      setSwapStep("error");
+      const raw = err instanceof Error ? err.message : String(err);
+      setError(parsePaymentError(raw));
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   /* -- EVM swap via LI.FI -------------------------------------------------- */
   const handleCryptoSolana = async () => {
     setProcessing(true);
@@ -412,6 +440,17 @@ export function PlanCheckoutModal({
                     <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">
                       {error}
                     </div>
+                  )}
+
+                  {/* Retry without re-sending USDC (when derived wallet is pre-funded) */}
+                  {method === "crypto" && swapStep === "error" && (
+                    <button
+                      onClick={handleDirectSubscribe}
+                      disabled={processing}
+                      className="w-full py-2.5 rounded-lg text-sm font-medium btn-outline disabled:opacity-50 mb-2"
+                    >
+                      Retry without re-sending USDC
+                    </button>
                   )}
 
                   {/* Submit */}
