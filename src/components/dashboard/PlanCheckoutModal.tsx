@@ -36,6 +36,10 @@ function parsePaymentError(raw: string): string {
     return msg;
   }
 
+  if (raw.includes("Failed to generate API key")) {
+    return "Subscription activation is temporarily unavailable (HyperClaw key generation failed). Your funds are safe — please try again in a few minutes.";
+  }
+
   if (raw.includes("402")) {
     return "Payment required but could not be processed. Please try a different payment method.";
   }
