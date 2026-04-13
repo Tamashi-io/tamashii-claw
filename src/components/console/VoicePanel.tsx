@@ -13,7 +13,7 @@ type Mode = "tts" | "design" | "clone";
 
 const VOICES = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
 
-export function VoicePanel({ getToken }: VoicePanelProps) {
+export function VoicePanel({ agentId, getToken }: VoicePanelProps) {
   const [mode, setMode] = useState<Mode>("tts");
   const [text, setText] = useState("");
   const [description, setDescription] = useState("");
