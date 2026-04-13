@@ -63,6 +63,8 @@ const SWAP_STEP_LABELS: Record<SwapStep, string> = {
   error: "Failed",
 };
 
+const PENDING_RETRY_KEY = "pendingCryptoRetry";
+
 export function PlanCheckoutModal({
   plan,
   isOpen,
@@ -75,6 +77,9 @@ export function PlanCheckoutModal({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [swapStep, setSwapStep] = useState<SwapStep>("idle");
+  const [hasPendingRetry, setHasPendingRetry] = useState(
+    () => sessionStorage.getItem(PENDING_RETRY_KEY) === plan.id,
+  );
   const [walletAddress, setWalletAddress] = useState<string | null>(
     () => getEvmWalletState()?.address ?? null,
   );
@@ -149,6 +154,8 @@ export function PlanCheckoutModal({
         body: JSON.stringify({ amount: amountUsdc }),
       });
       console.log("[checkout] Direct subscribe result:", result);
+      sessionStorage.removeItem(PENDING_RETRY_KEY);
+      setHasPendingRetry(false);
       setSuccess(true);
       setTimeout(() => { handleClose(); window.location.reload(); }, 2000);
     } catch (err) {
@@ -175,6 +182,10 @@ export function PlanCheckoutModal({
         (step) => {
           console.log("[checkout] Swap step:", step);
           setSwapStep(step);
+          if (step === "subscribing") {
+            sessionStorage.setItem(PENDING_RETRY_KEY, plan.id);
+            setHasPendingRetry(true);
+          }
         },
         cryptoPayToken,
       );
@@ -187,6 +198,8 @@ export function PlanCheckoutModal({
         console.warn("[checkout] Could not verify subscription status:", err);
       }
 
+      sessionStorage.removeItem(PENDING_RETRY_KEY);
+      setHasPendingRetry(false);
       setSuccess(true);
       setTimeout(() => {
         handleClose();
@@ -443,7 +456,7 @@ export function PlanCheckoutModal({
                   )}
 
                   {/* Retry without re-sending USDC (when derived wallet is pre-funded) */}
-                  {method === "crypto" && swapStep === "error" && (
+                  {method === "crypto" && (swapStep === "error" || hasPendingRetry) && (
                     <button
                       onClick={handleDirectSubscribe}
                       disabled={processing}

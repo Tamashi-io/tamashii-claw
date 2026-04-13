@@ -103,12 +103,23 @@ const TAMASHII_PLANS: Plan[] = [
   },
 ];
 
+const PENDING_RETRY_KEY = "pendingCryptoRetry";
+
 export default function PlansPage() {
   const { getToken } = useTamashiiAuth();
   const [plans, setPlans] = useState<Plan[]>(TAMASHII_PLANS);
   const [currentPlanId, setCurrentPlanId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [checkoutPlan, setCheckoutPlan] = useState<Plan | null>(null);
+
+  // Re-open modal automatically if a previous crypto payment was interrupted
+  useEffect(() => {
+    const pendingPlanId = sessionStorage.getItem(PENDING_RETRY_KEY);
+    if (pendingPlanId) {
+      const plan = TAMASHII_PLANS.find((p) => p.id === pendingPlanId && p.price > 0.01);
+      if (plan) setCheckoutPlan(plan);
+    }
+  }, []);
 
   useEffect(() => {
     const load = async () => {
