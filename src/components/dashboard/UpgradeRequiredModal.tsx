@@ -36,11 +36,18 @@ export function UpgradeRequiredModal({
       .finally(() => setLoading(false));
   }, [isOpen]);
 
-  // Only show plans that support agents and are upgrades from current.
-  // The API returns `agents` (flat number) — not `agent_resources`.
-  const upgradePlans = plans.filter(
-    (p) => (p.agents ?? 0) > 0 && p.id !== currentPlanId
-  );
+  // Show plans that include agent hosting and differ from current plan.
+  // HyperClaw may surface agent quota via `agents`, `agent_resources.max_agents`,
+  // or simply by being a non-free paid plan — check all three.
+  const upgradePlans = plans.filter((p) => {
+    if (p.id === currentPlanId || p.id === "free") return false;
+    const hasAgentsFlat = (p.agents ?? 0) > 0;
+    const hasAgentsNested = (p.agent_resources?.max_agents ?? 0) > 0;
+    // If neither field is present at all, include the plan anyway — any paid plan
+    // should include agent hosting, and the backend will enforce the real limits.
+    const agentFieldAbsent = p.agents === undefined && p.agent_resources === undefined;
+    return hasAgentsFlat || hasAgentsNested || agentFieldAbsent;
+  });
 
   if (checkoutPlan) {
     return (

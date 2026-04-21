@@ -184,16 +184,9 @@ export default function AgentsPage() {
       return { allowed: true, reason: "" };
     }
 
-    // No budget data — allow if user has a paid plan, let the backend enforce limits
-    if (hasPaidPlan) {
-      return { allowed: true, reason: "" };
-    }
-
-    // Free plan or no plan — show upgrade
-    return {
-      allowed: false,
-      reason: "Your current plan does not include agent hosting. Upgrade to a plan with agent resources to create agents.",
-    };
+    // No budget data — we can't determine limits client-side.
+    // Let the backend enforce; it will return a clear error if the plan doesn't support agents.
+    return { allowed: true, reason: "" };
   };
 
   const handleNewAgentClick = () => {
