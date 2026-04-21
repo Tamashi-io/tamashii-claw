@@ -25,11 +25,11 @@ export interface Plan {
   name: string;
   price: number;
   aiu: number;
-  features: string[];
-  models: string[];
+  features?: string[];
+  models?: string[];
   highlighted?: boolean | null;
   expires_at?: string | null;
-  limits: PlanLimits;
+  limits?: PlanLimits;
   agent_resources?: {
     max_agents: number;
     total_cpu: string;
