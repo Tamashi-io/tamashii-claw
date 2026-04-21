@@ -216,7 +216,7 @@ export default function PlansPage() {
               )}
 
               <ul className="space-y-3 mb-8 flex-1">
-                {plan.features.map((feature) => (
+                {(plan.features ?? []).map((feature) => (
                   <li key={feature} className="flex items-start gap-2 text-sm text-text-secondary">
                     <Check className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
                     <span>{feature}</span>
