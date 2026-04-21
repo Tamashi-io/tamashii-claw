@@ -138,8 +138,8 @@ export function UpgradeRequiredModal({
                             )}
                           </div>
                           <p className="text-xs text-text-muted mt-0.5">
-                            {formatTokens(plan.limits.tpd)} tokens/day &middot;{" "}
-                            {plan.agents} agent{(plan.agents ?? 0) > 1 ? "s" : ""} &middot;{" "}
+                            {plan.limits?.tpd ? `${formatTokens(plan.limits.tpd)} tokens/day · ` : ""}
+                            {plan.agents ?? plan.agent_resources?.max_agents ?? "?"} agent{((plan.agents ?? plan.agent_resources?.max_agents ?? 0) as number) !== 1 ? "s" : ""} &middot;{" "}
                             {plan.aiu} AIU
                           </p>
                         </div>

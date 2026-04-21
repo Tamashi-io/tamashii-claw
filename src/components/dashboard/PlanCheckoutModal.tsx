@@ -302,9 +302,9 @@ export function PlanCheckoutModal({
                       </span>
                     </div>
                     <p className="text-sm text-text-tertiary">
-                      {formatTokens(plan.limits.tpd)} tokens/day &middot;{" "}
-                      Up to {formatTokens(plan.limits.burst_tpm)} TPM &middot;{" "}
-                      {formatTokens(plan.limits.rpm)} RPM
+                      {plan.limits?.tpd ? `${formatTokens(plan.limits.tpd)} tokens/day · ` : ""}
+                      {plan.limits?.burst_tpm ? `Up to ${formatTokens(plan.limits.burst_tpm)} TPM · ` : ""}
+                      {plan.limits?.rpm ? `${formatTokens(plan.limits.rpm)} RPM` : ""}
                     </p>
                     {(plan.agents ?? 0) > 0 && (
                       <p className="text-sm text-text-tertiary mt-1">

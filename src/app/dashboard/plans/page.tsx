@@ -201,12 +201,14 @@ export default function PlansPage() {
                 <span className="text-text-muted text-sm">/month</span>
               </div>
               <p className="text-sm text-text-tertiary mb-1">
-                {plan.aiu} AIU &middot; {formatTokens(plan.limits.tpd)} tokens/day
+                {plan.aiu} AIU{plan.limits?.tpd ? ` · ${formatTokens(plan.limits.tpd)} tokens/day` : ""}
               </p>
-              <p className="text-xs text-text-muted mb-6">
-                Up to {formatTokens(plan.limits.burst_tpm)} TPM burst &middot;{" "}
-                {formatTokens(plan.limits.rpm)} RPM
-              </p>
+              {plan.limits?.burst_tpm && (
+                <p className="text-xs text-text-muted mb-6">
+                  Up to {formatTokens(plan.limits.burst_tpm)} TPM burst &middot;{" "}
+                  {formatTokens(plan.limits.rpm ?? 0)} RPM
+                </p>
+              )}
               {(plan.agents ?? 0) > 0 && (
                 <p className="text-xs text-text-muted mb-6">
                   {plan.agents} agent{(plan.agents ?? 0) > 1 ? "s" : ""} included
